@@ -571,7 +571,7 @@ export default function CampaignEnvironment() {
               const requiresProof = ["comment", "follow", "comment-x", "follow-x", "repost-x", "feedback", "create-post"].includes(quest.tag);
               const isFeedback = quest.tag === "feedback";
               const isTns = quest.tag === "trust-name";
-              const visited = visitedQuests.includes(quest._id) || isTns;
+              const visited = visitedQuests.includes(quest._id);
               const claimed = quest.done || claimedQuests.includes(quest._id);
               const pending = quest.status === "pending" || pendingQuests.includes(quest._id);
               const failed = failedQuests.includes(quest._id);

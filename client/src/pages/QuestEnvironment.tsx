@@ -334,7 +334,7 @@ export default function QuestEnvironment() {
 
   const renderQuestRow = (quest: Quest, index: number) => {
     const isTns = quest.tag === "trust-name";
-    const visited = visitedQuests.includes(quest._id) || isTns;
+    const visited = visitedQuests.includes(quest._id);
     const claimed = quest.done || claimedQuests.includes(quest._id);
     const pending = quest.status === "pending" || pendingQuests.includes(quest._id);
     const isRetry = quest.status === "retry";
