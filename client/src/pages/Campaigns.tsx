@@ -304,9 +304,6 @@ export default function Campaigns() {
             <span className="text-white flex items-center gap-1">
               <Users className="w-3 h-3" />
               {(campaign.participants ?? 0).toLocaleString()}
-              {campaign.maxParticipants && campaign.maxParticipants > 0 && (
-                <span className="text-gray-500">/ {campaign.maxParticipants.toLocaleString()}</span>
-              )}
             </span>
           </div>
 
