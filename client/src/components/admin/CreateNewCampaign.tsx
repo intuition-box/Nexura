@@ -7,6 +7,8 @@ import { Card, CardTitle, CardDescription, CardFooter } from "../../components/u
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 
 import { projectApiRequest, getStoredProjectInfo } from "../../lib/projectApi";
 import { addReward, closeRewardCampaign, createRewardsContract, getRewardContractStartDate, getServerAuthorizedAddress, payStudioHubFee, syncRewardContractStartDate } from "../../lib/performOnchainAction";
@@ -120,6 +122,8 @@ export default function CreateNewCampaigns() {
   const [showModal, setShowModal] = useState(false);
   const [validationType, setValidationType] = useState("manual");
   const { toast } = useToast();
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
 
 const [tasks, setTasks] = useState<Task[]>([]); 
   const [newTask, setNewTask] = useState({
@@ -2629,6 +2633,11 @@ const isActive =
               type="button"
               disabled={paymentLoading}
               onClick={async () => {
+                if (!isConnected) {
+                  openConnectModal?.();
+                  toast({ title: "Connect wallet", description: "Connect your wallet to pay the campaign launch fee.", variant: "destructive" });
+                  return;
+                }
                 setPaymentLoading(true);
                 try {
                   const hash = await payStudioHubFee(1000);
