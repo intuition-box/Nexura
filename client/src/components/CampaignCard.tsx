@@ -224,7 +224,7 @@ const formatDuration = (
 
           <span className="text-white flex items-center gap-1">
             <Users className="w-3 h-3" />
-            {allowedParticipants.toLocaleString()}
+            {(participants ?? 0).toLocaleString()}
           </span>
         </div>
 
