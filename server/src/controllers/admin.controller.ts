@@ -790,14 +790,21 @@ export const getXpHistory = async (req: GlobalRequest, res: GlobalResponse) => {
 
 export const searchUserXpHistory = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { address } = req.query;
-    if (!address) {
-      res.status(BAD_REQUEST).json({ error: "address query parameter is required" });
+    const { address, username } = req.query;
+    if (!address && !username) {
+      res.status(BAD_REQUEST).json({ error: "address or username query parameter is required" });
       return;
     }
 
-    const normalizedAddress = String(address).trim().toLowerCase();
-    const history = await xpLog.find({ address: normalizedAddress }).sort({ timestamp: -1 }).limit(100).lean();
+    let query: any = {};
+    if (address) {
+      query.address = String(address).trim().toLowerCase();
+    }
+    if (username) {
+      query.username = { $regex: String(username).trim(), $options: "i" };
+    }
+
+    const history = await xpLog.find(query).sort({ timestamp: -1 }).limit(100).lean();
 
     res.status(OK).json({ history });
   } catch (error) {
