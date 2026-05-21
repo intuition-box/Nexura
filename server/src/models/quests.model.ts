@@ -142,8 +142,12 @@ const questSchema = new Schema({
 	},
 	status: {
 		type: String,
-		enum: ["Active", "Scheduled", "Save", "Ended"],
+		enum: ["Active", "Scheduled", "Save", "Ended", "Deleted"],
 		default: "Save"
+	},
+	deletedAt: {
+		type: Date,
+		default: null,
 	},
 	questNumber: {
 		type: Number

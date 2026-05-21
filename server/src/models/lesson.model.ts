@@ -30,6 +30,10 @@ const lessonSchema = new mongoose.Schema({
     enum: ["draft", "published"],
     default: "draft",
   },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
   creator: {
     type: mongoose.Schema.Types.ObjectId,
     refPath: "creatorModel",
