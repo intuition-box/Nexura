@@ -4,7 +4,7 @@ import { bannedUser } from "@/models/bannedUser.model";
 import { hubAdmin, userHubAdmin } from "@/models/hub.model";
 import { user } from "@/models/user.model";
 import { resolveAdminCampaignHub } from "@/utils/adminCampaignHub";
-import { BAD_REQUEST, INTERNAL_SERVER_ERROR, UNAUTHORIZED } from "@/utils/status.utils";
+import { BAD_REQUEST, INTERNAL_SERVER_ERROR, UNAUTHORIZED, FORBIDDEN } from "@/utils/status.utils";
 import { JWT } from "@/utils/utils";
 import { REDIS } from "@/utils/redis.utils";
 import multer from "multer";
@@ -53,6 +53,13 @@ export const authenticateHubAdmin = async (req: GlobalRequest, res: GlobalRespon
       return;
     }
 
+    // Check if hub is banned
+    const isBanned = await bannedUser.findById(superAdminExists._id).lean();
+    if (isBanned) {
+      res.status(FORBIDDEN).json({ error: "this hub has been banned" });
+      return;
+    }
+
     req.id = id as string;
     req.adminName = superAdminExists.name;
   	req.admin = superAdminExists;
@@ -97,6 +104,13 @@ export const authenticateUserHub = async (req: GlobalRequest, res: GlobalRespons
       const exists = await userHubAdmin.findById(id).lean();
       if (!exists) {
         res.status(UNAUTHORIZED).json({ error: "route is available only to user hub admin" });
+        return;
+      }
+
+      // Check if hub is banned
+      const isBanned = await bannedUser.findById(exists._id).lean();
+      if (isBanned) {
+        res.status(FORBIDDEN).json({ error: "this hub has been banned" });
         return;
       }
 

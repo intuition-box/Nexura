@@ -46,6 +46,14 @@ async function throwIfNotOk(res: Response): Promise<void> {
       (json as Record<string, unknown>)?.error ??
       (json as Record<string, unknown>)?.message ??
       res.statusText;
+
+    // Force logout if hub is banned
+    if (res.status === 403 && String(msg).includes("this hub has been banned")) {
+      clearUserSession();
+      // Schedule redirect to avoid React state conflicts
+      setTimeout(() => { window.location.href = "/studio/users/user-signin"; }, 100);
+    }
+
     throw new Error(toUserFriendlyErrorMessage(String(msg)));
   }
 }

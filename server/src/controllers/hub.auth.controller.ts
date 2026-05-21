@@ -28,6 +28,7 @@ import { resetEmail, sendOTPConfirmEmail, resetPasswordOTPEmail } from "@/utils/
 import { OTP } from "@/models/otp.model";
 import { REDIS } from "@/utils/redis.utils";
 import { verifiedEmail } from "@/models/verifiedEmail.model";
+import { bannedUser } from "@/models/bannedUser.model";
 
 const headers = {
 	"Content-Type": "application/x-www-form-urlencoded",
@@ -52,6 +53,13 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		const comparePassword = await bcrypt.compare(password, adminExists.password);
 		if (!comparePassword) {
 			res.status(BAD_REQUEST).json({ error: "invalid signin credentials" });
+			return;
+		}
+
+		// Check if hub admin is banned
+		const isBanned = await bannedUser.findById(adminExists._id).lean();
+		if (isBanned) {
+			res.status(FORBIDDEN).json({ error: "this hub has been banned" });
 			return;
 		}
 
@@ -471,6 +479,13 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 		const comparePassword = await bcrypt.compare(password, adminExists.password);
 		if (!comparePassword) {
 			res.status(BAD_REQUEST).json({ error: "invalid signin credentials" });
+			return;
+		}
+
+		// Check if hub admin is banned
+		const isBanned = await bannedUser.findById(adminExists._id).lean();
+		if (isBanned) {
+			res.status(FORBIDDEN).json({ error: "this hub has been banned" });
 			return;
 		}
 
