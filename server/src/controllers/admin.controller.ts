@@ -1268,23 +1268,23 @@ export const permanentlyDeleteStudioCampaign = async (req: GlobalRequest, res: G
 export const getStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
     const quests = await quest
-      .find({ creatorModel: "project", status: { $ne: "Deleted" } })
-      .populate({ path: "creator", select: "name logo" })
+      .find({ creatorModel: { $in: ["project", "user"] }, status: { $ne: "Deleted" } })
+      .populate({ path: "hub", select: "name logo" })
       .sort({ createdAt: -1 })
       .lean();
 
     const normalized = quests.map((q: any) => ({
       _id: String(q._id),
       title: q.title || "",
-      projectName: q.project_name || "",
+      projectName: q.project_name || q.hub?.name || "",
       status: q.status || "â€”",
       starts_at: q.starts_at ?? null,
       ends_at: q.ends_at ?? null,
       reward: { xp: Number(q.reward ?? 0) },
       creator: {
-        id: q.creator?._id ? String(q.creator._id) : "",
-        name: q.creator?.name || q.project_name || "Unknown",
-        logo: q.creator?.logo || q.project_image || "",
+        id: q.creator?._id ? String(q.creator._id) : (q.hub?._id ? String(q.hub._id) : ""),
+        name: q.hub?.name || q.creator?.name || q.project_name || "Unknown",
+        logo: q.hub?.logo || q.creator?.logo || q.project_image || "",
       },
       createdAt: q.createdAt ?? null,
     }));
@@ -1357,22 +1357,22 @@ export const getDeletedStudioQuests = async (_req: GlobalRequest, res: GlobalRes
   try {
     const quests = await quest
       .find({ status: "Deleted" })
-      .populate({ path: "creator", select: "name logo" })
+      .populate({ path: "hub", select: "name logo" })
       .sort({ deletedAt: -1, createdAt: -1 })
       .lean();
 
     const normalized = quests.map((q: any) => ({
       _id: String(q._id),
       title: q.title || "",
-      projectName: q.project_name || "",
+      projectName: q.project_name || q.hub?.name || "",
       status: q.status || "—",
       starts_at: q.starts_at ?? null,
       ends_at: q.ends_at ?? null,
       reward: { xp: Number(q.reward ?? 0) },
       creator: {
-        id: q.creator?._id ? String(q.creator._id) : "",
-        name: q.creator?.name || q.project_name || "Unknown",
-        logo: q.creator?.logo || q.project_image || "",
+        id: q.creator?._id ? String(q.creator._id) : (q.hub?._id ? String(q.hub._id) : ""),
+        name: q.hub?.name || q.creator?.name || q.project_name || "Unknown",
+        logo: q.hub?.logo || q.creator?.logo || q.project_image || "",
       },
       createdAt: q.createdAt ?? null,
       deletedAt: q.deletedAt ?? null,
