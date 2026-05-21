@@ -39,6 +39,9 @@ import {
   getDeletedStudioLessons,
   restoreStudioLesson,
   permanentlyDeleteStudioLesson,
+  banCreator,
+  unbanCreator,
+  getBannedCreators,
 } from "@/controllers/admin.controller";
 import { deleteQuest, saveQuest } from "@/controllers/quest.controller";
 import { fetchChannels, fetchRoles, fetchServers } from "@/controllers/hub.auth.controller";
@@ -87,6 +90,9 @@ router
   .post("/search-xp-history", searchUserXpHistory)
   .post("/ban-user", banUser)
   .post("/unban-user", unBanUser)
+  .post("/ban-creator", banCreator)
+  .post("/unban-creator", unbanCreator)
+  .get("/banned-creators", getBannedCreators)
   .get("/me", attachAdminCampaignHub, getHub)
   .patch("/update-hub", requireAdminSuperadmin, attachAdminCampaignHub, upload.fields([{ name: "logo", maxCount: 1 }, { name: "document", maxCount: 1 }]), updateHub)
   .patch("/disconnect-discord", requireAdminSuperadmin, attachAdminCampaignHub, disconnectHubDiscord)

@@ -12,7 +12,7 @@ import { sendAdminResetEmail, sendEmailToAdmin } from "@/utils/sendMail";
 import { campaignQuestCompleted, miniQuestCompleted, questCompleted } from "@/models/questsCompleted.models";
 import { submission } from "@/models/submission.model";
 import { user } from "@/models/user.model";
-import { hub, userHub, userHubAdmin } from "@/models/hub.model";
+import { hub, hubAdmin, userHub, userHubAdmin } from "@/models/hub.model";
 import { bannedUser } from "@/models/bannedUser.model";
 import { REDIS } from "@/utils/redis.utils";
 import { xpLog } from "@/models/xpLog.model";
@@ -945,6 +945,119 @@ export const getAdminLeaderboard = async (req: GlobalRequest, res: GlobalRespons
 	} catch (error) {
 		logger.error(error);
 		res.status(INTERNAL_SERVER_ERROR).json({ error: "error fetching admin leaderboard" });
+	}
+};
+
+export const banCreator = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { creatorId }: { creatorId: string } = req.body;
+
+		if (!creatorId) {
+			res.status(BAD_REQUEST).json({ error: "creator id is required" });
+			return;
+		}
+
+		// Try to find the creator as a user-hub first, then as a project hub
+		let ownerId: string | null = null;
+		let ownerAddress: string | null = null;
+
+		// Check user-hubs
+		const userHubDoc = await userHub.findById(creatorId).lean();
+		if (userHubDoc) {
+			// Find the user-hub admin
+			const uha = await userHubAdmin.findOne({ hub: creatorId }).lean();
+			if (uha) {
+				ownerId = uha._id.toString();
+				ownerAddress = uha.email; // use email as identifier for non-wallet accounts
+			}
+		}
+
+		// Check project hubs
+		if (!ownerId) {
+			const hubDoc = await hub.findById(creatorId).lean();
+			if (hubDoc) {
+				// Find the hub admin
+				const ha = await hubAdmin.findOne({ hub: creatorId }).lean();
+				if (ha) {
+					ownerId = ha._id.toString();
+					ownerAddress = ha.email || "";
+				}
+			}
+		}
+
+		if (!ownerId) {
+			res.status(NOT_FOUND).json({ error: "creator not found" });
+			return;
+		}
+
+		// Skip if already banned
+		const alreadyBanned = await bannedUser.findById(ownerId).lean();
+		if (alreadyBanned) {
+			res.status(BAD_REQUEST).json({ error: "creator is already banned" });
+			return;
+		}
+
+		await bannedUser.create({ userId: ownerId, walletAddress: ownerAddress });
+		res.status(OK).json({ message: "creator banned" });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error banning creator" });
+	}
+};
+
+export const unbanCreator = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { creatorId }: { creatorId: string } = req.body;
+
+		if (!creatorId) {
+			res.status(BAD_REQUEST).json({ error: "creator id is required" });
+			return;
+		}
+
+		// Resolve creator to ownerId (same logic as banCreator)
+		let ownerId: string | null = null;
+
+		const userHubDoc = await userHub.findById(creatorId).lean();
+		if (userHubDoc) {
+			const uha = await userHubAdmin.findOne({ hub: creatorId }).lean();
+			if (uha) ownerId = uha._id.toString();
+		}
+
+		if (!ownerId) {
+			const hubDoc = await hub.findById(creatorId).lean();
+			if (hubDoc) {
+				const ha = await hubAdmin.findOne({ hub: creatorId }).lean();
+				if (ha) ownerId = ha._id.toString();
+			}
+		}
+
+		if (!ownerId) {
+			// Try direct lookup in bannedUser
+			ownerId = creatorId;
+		}
+
+		const banned = await bannedUser.findById(ownerId).lean();
+		if (!banned) {
+			res.status(BAD_REQUEST).json({ error: "creator is not banned" });
+			return;
+		}
+
+		await bannedUser.findByIdAndDelete(ownerId);
+		res.status(OK).json({ message: "creator unbanned" });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error unbanning creator" });
+	}
+};
+
+export const getBannedCreators = async (_req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const banned = await bannedUser.find({}).sort({ createdAt: -1 }).lean();
+		const ids = banned.map(b => b.userId);
+		res.status(OK).json({ bannedCreatorIds: ids });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error fetching banned creators" });
 	}
 };
 
