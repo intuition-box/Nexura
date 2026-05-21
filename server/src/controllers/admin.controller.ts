@@ -1211,22 +1211,35 @@ export const markTask = async (req: GlobalRequest, res: GlobalResponse) => {
 }
 
 const getSystemHubIds = async () => {
-  const [sysHubs, sysUserHubs] = await Promise.all([
+  const [sysHubs, sysUserHubs, platformAdmins] = await Promise.all([
     hub.find({ systemKey: ADMIN_CAMPAIGN_SYSTEM_KEY }).select("_id").lean(),
     userHub.find({ systemKey: ADMIN_CAMPAIGN_SYSTEM_KEY }).select("_id").lean(),
+    admin.find({}).select("email username").lean(),
   ]);
+  const adminEmails = platformAdmins.map(a => a.email).filter(Boolean);
+  const adminUsernames = platformAdmins.map(a => a.username).filter(Boolean);
+
+  // Find hub admins whose email matches a platform admin
+  const adminHubAdmins = await hubAdmin.find({ email: { $in: adminEmails } }).select("hub").lean();
+  const adminUserHubAdmins = await userHubAdmin.find({ email: { $in: adminEmails } }).select("hub").lean();
+
   return {
     systemHubIds: sysHubs.map(h => h._id),
     systemUserHubIds: sysUserHubs.map(h => h._id),
+    adminManagedHubIds: adminHubAdmins.map(h => h.hub).filter(Boolean),
+    adminManagedUserHubIds: adminUserHubAdmins.map(h => h.hub).filter(Boolean),
+    adminEmails,
+    adminUsernames,
   };
 };
 
 export const getStudioCampaigns = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemHubIds } = await getSystemHubIds();
+    const { systemHubIds, adminManagedHubIds } = await getSystemHubIds();
+    const excludeHubs = [...systemHubIds, ...adminManagedHubIds];
 
     const campaigns = await campaignModel
-      .find({ status: { $ne: "Deleted" }, deletedAt: null, hub: { $nin: systemHubIds } })
+      .find({ status: { $ne: "Deleted" }, deletedAt: null, hub: { $nin: excludeHubs } })
       .populate({ path: "hub", select: "name logo" })
       .sort({ createdAt: -1 })
       .lean();
@@ -1287,10 +1300,11 @@ export const deleteStudioCampaign = async (req: GlobalRequest, res: GlobalRespon
 
 export const getDeletedStudioCampaigns = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemHubIds } = await getSystemHubIds();
+    const { systemHubIds, adminManagedHubIds } = await getSystemHubIds();
+    const excludeHubs = [...systemHubIds, ...adminManagedHubIds];
 
     const campaigns = await campaignModel
-      .find({ status: "Deleted", hub: { $nin: systemHubIds } })
+      .find({ status: "Deleted", hub: { $nin: excludeHubs } })
       .populate({ path: "hub", select: "name logo" })
       .sort({ deletedAt: -1, createdAt: -1 })
       .lean();
@@ -1396,10 +1410,11 @@ export const permanentlyDeleteStudioCampaign = async (req: GlobalRequest, res: G
 
 export const getStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemUserHubIds } = await getSystemHubIds();
+    const { systemUserHubIds, adminManagedUserHubIds } = await getSystemHubIds();
+    const excludeHubs = [...systemUserHubIds, ...adminManagedUserHubIds];
 
     const quests = await quest
-      .find({ creatorModel: { $in: ["project", "user"] }, status: { $ne: "Deleted" }, hub: { $nin: systemUserHubIds } })
+      .find({ creatorModel: { $in: ["project", "user"] }, status: { $ne: "Deleted" }, hub: { $nin: excludeHubs } })
       .populate({ path: "hub", select: "name logo" })
       .sort({ createdAt: -1 })
       .lean();
@@ -1429,7 +1444,9 @@ export const getStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) 
 
 export const getStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemHubIds, systemUserHubIds } = await getSystemHubIds();
+    const { systemHubIds, systemUserHubIds, adminManagedHubIds, adminManagedUserHubIds } = await getSystemHubIds();
+    const allSystemHubIds = [...systemHubIds, ...adminManagedHubIds];
+    const allSystemUserHubIds = [...systemUserHubIds, ...adminManagedUserHubIds];
     const adminNames = (await admin.find({}).select("email username").lean()).map(a => [a.email, a.username].filter(Boolean) as string[]).flat();
 
     const lessonsList = await lesson
@@ -1443,9 +1460,13 @@ export const getStudioLessons = async (_req: GlobalRequest, res: GlobalResponse)
 
     // Post-filter to remove system hub lessons and admin-created content
     const filtered = lessonsList.filter((l: any) => {
-      if (l.creatorModel === "project" && systemHubIds.some(id => String(id) === String(l.creator))) return false;
-      if (l.creatorModel === "user-hubs" && systemUserHubIds.some(id => String(id) === String(l.creator))) return false;
-      if (adminNames.some(name => name === l.creatorName)) return false;
+      const creatorId = l.creator?._id ? String(l.creator._id) : String(l.creator || "");
+      if (l.creatorModel === "admin") return false;
+      if (l.creatorModel === "project" && allSystemHubIds.some(id => String(id) === creatorId)) return false;
+      if (l.creatorModel === "user-hubs" && allSystemUserHubIds.some(id => String(id) === creatorId)) return false;
+      if (adminNames.some(name => name === l.creatorName || name === l.creator?.name)) return false;
+      // Exclude orphaned lessons with no creator info (likely admin test leftovers)
+      if (!l.creatorName && !l.creator?._id) return false;
       return true;
     });
 
@@ -1500,10 +1521,11 @@ export const deleteStudioQuest = async (req: GlobalRequest, res: GlobalResponse)
 
 export const getDeletedStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemUserHubIds } = await getSystemHubIds();
+    const { systemUserHubIds, adminManagedUserHubIds } = await getSystemHubIds();
+    const excludeHubs = [...systemUserHubIds, ...adminManagedUserHubIds];
 
     const quests = await quest
-      .find({ status: "Deleted", hub: { $nin: systemUserHubIds } })
+      .find({ status: "Deleted", hub: { $nin: excludeHubs } })
       .populate({ path: "hub", select: "name logo" })
       .sort({ deletedAt: -1, createdAt: -1 })
       .lean();
@@ -1629,7 +1651,9 @@ export const deleteStudioLesson = async (req: GlobalRequest, res: GlobalResponse
 
 export const getDeletedStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { systemHubIds, systemUserHubIds } = await getSystemHubIds();
+    const { systemHubIds, systemUserHubIds, adminManagedHubIds, adminManagedUserHubIds } = await getSystemHubIds();
+    const allSystemHubIds = [...systemHubIds, ...adminManagedHubIds];
+    const allSystemUserHubIds = [...systemUserHubIds, ...adminManagedUserHubIds];
     const adminNames = (await admin.find({}).select("email username").lean()).map(a => [a.email, a.username].filter(Boolean) as string[]).flat();
 
     const lessonsList = await lesson
@@ -1640,10 +1664,12 @@ export const getDeletedStudioLessons = async (_req: GlobalRequest, res: GlobalRe
 
     // Post-filter to remove system hub and admin lessons
     const filtered = lessonsList.filter((l: any) => {
+      const creatorId = l.creator?._id ? String(l.creator._id) : String(l.creator || "");
       if (l.creatorModel === "admin") return false;
-      if (l.creatorModel === "project" && systemHubIds.some(id => String(id) === String(l.creator))) return false;
-      if (l.creatorModel === "user-hubs" && systemUserHubIds.some(id => String(id) === String(l.creator))) return false;
-      if (adminNames.some(name => name === l.creatorName)) return false;
+      if (l.creatorModel === "project" && allSystemHubIds.some(id => String(id) === creatorId)) return false;
+      if (l.creatorModel === "user-hubs" && allSystemUserHubIds.some(id => String(id) === creatorId)) return false;
+      if (adminNames.some(name => name === l.creatorName || name === l.creator?.name)) return false;
+      if (!l.creatorName && !l.creator?._id) return false;
       return true;
     });
 
