@@ -1430,24 +1430,22 @@ export const getStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) 
 export const getStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { systemHubIds, systemUserHubIds } = await getSystemHubIds();
+    const adminNames = (await admin.find({}).select("email username").lean()).map(a => [a.email, a.username].filter(Boolean) as string[]).flat();
 
     const lessonsList = await lesson
       .find({
         deletedAt: null,
-        $or: [
-          // Exclude admin-created lessons entirely
-          { creatorModel: { $nin: ["admin"] } },
-          // This filter catches everything not admin; we further filter below
-        ],
+        creatorModel: { $nin: ["admin"] },
       })
       .populate({ path: "creator", select: "name logo" })
       .sort({ createdAt: -1 })
       .lean();
 
-    // Post-filter to remove system hub lessons
+    // Post-filter to remove system hub lessons and admin-created content
     const filtered = lessonsList.filter((l: any) => {
       if (l.creatorModel === "project" && systemHubIds.some(id => String(id) === String(l.creator))) return false;
       if (l.creatorModel === "user-hubs" && systemUserHubIds.some(id => String(id) === String(l.creator))) return false;
+      if (adminNames.some(name => name === l.creatorName)) return false;
       return true;
     });
 
@@ -1632,6 +1630,7 @@ export const deleteStudioLesson = async (req: GlobalRequest, res: GlobalResponse
 export const getDeletedStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { systemHubIds, systemUserHubIds } = await getSystemHubIds();
+    const adminNames = (await admin.find({}).select("email username").lean()).map(a => [a.email, a.username].filter(Boolean) as string[]).flat();
 
     const lessonsList = await lesson
       .find({ deletedAt: { $ne: null } })
@@ -1639,11 +1638,12 @@ export const getDeletedStudioLessons = async (_req: GlobalRequest, res: GlobalRe
       .sort({ deletedAt: -1, createdAt: -1 })
       .lean();
 
-    // Post-filter to remove system hub lessons
+    // Post-filter to remove system hub and admin lessons
     const filtered = lessonsList.filter((l: any) => {
       if (l.creatorModel === "admin") return false;
       if (l.creatorModel === "project" && systemHubIds.some(id => String(id) === String(l.creator))) return false;
       if (l.creatorModel === "user-hubs" && systemUserHubIds.some(id => String(id) === String(l.creator))) return false;
+      if (adminNames.some(name => name === l.creatorName)) return false;
       return true;
     });
 
