@@ -1298,9 +1298,8 @@ export const getStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) 
 
 export const getStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
   try {
-    // Fetch ALL lessons (not just project-associated ones) to show drafts and lessons without creators
     const lessonsList = await lesson
-      .find({})
+      .find({ deletedAt: null })
       .populate({ path: "creator", select: "name logo" })
       .sort({ createdAt: -1 })
       .lean();
