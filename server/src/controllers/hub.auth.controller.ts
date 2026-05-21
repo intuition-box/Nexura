@@ -544,7 +544,7 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 				_id: adminExists._id,
 				name: adminExists.name,
 				email: adminExists.email,
-				hub: adminExists.hub,
+				hub: hubId || adminExists.hub,
 			},
 		});
 	} catch (error) {
