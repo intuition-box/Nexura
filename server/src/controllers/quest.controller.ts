@@ -868,12 +868,19 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 		}
 
 		let questExists;
+		let resolvedHub = hubId;
 
 		if (page !== "campaign") {
 			questExists = await miniQuest.findById(id);
 			if (!questExists) {
 				res.status(BAD_REQUEST).json({ error: "mini quest id is invalid" });
 				return;
+			}
+
+			// Resolve the hub from the parent quest so submissions always land in the creator's dashboard
+			if (!resolvedHub && questExists.quest) {
+				const parentQuest = await quest.findById(questExists.quest).select("hub").lean();
+				resolvedHub = parentQuest?.hub?.toString() || hubId;
 			}
 
 			notComplete = await miniQuestCompleted.create({ miniQuest: id, quest: questId, user: userId });
@@ -886,7 +893,7 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 			notComplete = await campaignQuestCompleted.create({ campaign: questId, campaignQuest: id, user: userId });
 		}
 
-		await submission.create({ submissionLink, hub: hubId ?? "nexura-hub", taskType: tag, address: userExists.address, username: userExists.socialProfiles?.x?.username || userExists.username, miniQuestId: id, user: userId, page, questCompleted: notComplete._id });
+		await submission.create({ submissionLink, hub: resolvedHub ?? "nexura-hub", taskType: tag, address: userExists.address, username: userExists.socialProfiles?.x?.username || userExists.username, miniQuestId: id, user: userId, page, questCompleted: notComplete._id });
 
 		res.status(OK).json({ message: "quest submitted" });
 	} catch (error: any) {
