@@ -57,7 +57,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		}
 
 		// Check if hub admin is banned
-		const isBanned = await bannedUser.findById(adminExists._id).lean();
+		const isBanned = await bannedUser.findOne({ userId: adminExists._id }).lean();
 		if (isBanned) {
 			res.status(FORBIDDEN).json({ error: "this hub has been banned" });
 			return;
@@ -483,7 +483,7 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 		}
 
 		// Check if hub admin is banned
-		const isBanned = await bannedUser.findById(adminExists._id).lean();
+		const isBanned = await bannedUser.findOne({ userId: adminExists._id }).lean();
 		if (isBanned) {
 			res.status(FORBIDDEN).json({ error: "this hub has been banned" });
 			return;

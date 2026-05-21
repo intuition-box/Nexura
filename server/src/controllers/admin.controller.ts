@@ -1036,13 +1036,13 @@ export const unbanCreator = async (req: GlobalRequest, res: GlobalResponse) => {
 			ownerId = creatorId;
 		}
 
-		const banned = await bannedUser.findById(ownerId).lean();
+		const banned = await bannedUser.findOne({ userId: ownerId }).lean();
 		if (!banned) {
 			res.status(BAD_REQUEST).json({ error: "creator is not banned" });
 			return;
 		}
 
-		await bannedUser.findByIdAndDelete(ownerId);
+		await bannedUser.findOneAndDelete({ userId: ownerId });
 		res.status(OK).json({ message: "creator unbanned" });
 	} catch (error) {
 		logger.error(error);
