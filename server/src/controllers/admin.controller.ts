@@ -1326,6 +1326,241 @@ export const getStudioLessons = async (_req: GlobalRequest, res: GlobalResponse)
   }
 };
 
+// ── Studio Quests: Delete / Restore / Permanent Delete ──
+
+export const deleteStudioQuest = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "quest id is required" });
+      return;
+    }
+
+    const updated = await quest.findByIdAndUpdate(
+      id,
+      { status: "Deleted", deletedAt: new Date() },
+      { new: true }
+    );
+
+    if (!updated) {
+      res.status(NOT_FOUND).json({ error: "quest not found" });
+      return;
+    }
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error deleting studio quest" });
+  }
+};
+
+export const getDeletedStudioQuests = async (_req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const quests = await quest
+      .find({ status: "Deleted" })
+      .populate({ path: "creator", select: "name logo" })
+      .sort({ deletedAt: -1, createdAt: -1 })
+      .lean();
+
+    const normalized = quests.map((q: any) => ({
+      _id: String(q._id),
+      title: q.title || "",
+      projectName: q.project_name || "",
+      status: q.status || "—",
+      starts_at: q.starts_at ?? null,
+      ends_at: q.ends_at ?? null,
+      reward: { xp: Number(q.reward ?? 0) },
+      creator: {
+        id: q.creator?._id ? String(q.creator._id) : "",
+        name: q.creator?.name || q.project_name || "Unknown",
+        logo: q.creator?.logo || q.project_image || "",
+      },
+      createdAt: q.createdAt ?? null,
+      deletedAt: q.deletedAt ?? null,
+    }));
+
+    res.status(OK).json({ deletedQuests: normalized });
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error fetching deleted quests" });
+  }
+};
+
+export const restoreStudioQuest = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "quest id is required" });
+      return;
+    }
+
+    const questToRestore = await quest.findById(id);
+    if (!questToRestore) {
+      res.status(NOT_FOUND).json({ error: "quest not found" });
+      return;
+    }
+
+    const now = new Date();
+    const startsAt = questToRestore.starts_at ? new Date(questToRestore.starts_at) : null;
+    const endsAt = questToRestore.ends_at ? new Date(questToRestore.ends_at) : null;
+
+    let targetStatus = "Active";
+    if (endsAt && !isNaN(endsAt.getTime()) && endsAt <= now) {
+      targetStatus = "Ended";
+    } else if (startsAt && !isNaN(startsAt.getTime()) && startsAt > now) {
+      targetStatus = "Scheduled";
+    }
+
+    const updated = await quest.findByIdAndUpdate(
+      id,
+      { status: targetStatus, deletedAt: null },
+      { new: true }
+    );
+
+    if (!updated) {
+      res.status(NOT_FOUND).json({ error: "quest not found" });
+      return;
+    }
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error restoring quest" });
+  }
+};
+
+export const permanentlyDeleteStudioQuest = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "quest id is required" });
+      return;
+    }
+
+    const result = await quest.findByIdAndDelete(id);
+    if (!result) {
+      res.status(NOT_FOUND).json({ error: "quest not found" });
+      return;
+    }
+
+    // Also remove associated mini-quests
+    await miniQuest.deleteMany({ quest: id });
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error permanently deleting quest" });
+  }
+};
+
+// ── Studio Lessons: Delete / Restore / Permanent Delete ──
+
+export const deleteStudioLesson = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "lesson id is required" });
+      return;
+    }
+
+    const updated = await lesson.findByIdAndUpdate(
+      id,
+      { deletedAt: new Date() },
+      { new: true }
+    );
+
+    if (!updated) {
+      res.status(NOT_FOUND).json({ error: "lesson not found" });
+      return;
+    }
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error deleting studio lesson" });
+  }
+};
+
+export const getDeletedStudioLessons = async (_req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const lessonsList = await lesson
+      .find({ deletedAt: { $ne: null } })
+      .populate({ path: "creator", select: "name logo" })
+      .sort({ deletedAt: -1, createdAt: -1 })
+      .lean();
+
+    const normalized = lessonsList.map((l: any) => ({
+      _id: String(l._id),
+      title: l.title || "",
+      projectName: l.creator?.name || "Unknown",
+      status: "Deleted",
+      reward: { xp: Number(l.reward ?? 0) },
+      creator: {
+        id: l.creator?._id ? String(l.creator._id) : (l.creator || ""),
+        name: l.creator?.name || l.creatorName || "Unknown",
+        logo: l.creator?.logo || l.profileImage || "",
+      },
+      createdAt: l.createdAt ?? null,
+      deletedAt: l.deletedAt ?? null,
+    }));
+
+    res.status(OK).json({ deletedLessons: normalized });
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error fetching deleted lessons" });
+  }
+};
+
+export const restoreStudioLesson = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "lesson id is required" });
+      return;
+    }
+
+    const updated = await lesson.findByIdAndUpdate(
+      id,
+      { deletedAt: null },
+      { new: true }
+    );
+
+    if (!updated) {
+      res.status(NOT_FOUND).json({ error: "lesson not found" });
+      return;
+    }
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error restoring lesson" });
+  }
+};
+
+export const permanentlyDeleteStudioLesson = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    if (!id) {
+      res.status(BAD_REQUEST).json({ error: "lesson id is required" });
+      return;
+    }
+
+    const result = await lesson.findByIdAndDelete(id);
+    if (!result) {
+      res.status(NOT_FOUND).json({ error: "lesson not found" });
+      return;
+    }
+
+    // Also remove associated mini-lessons
+    await miniLesson.deleteMany({ lesson: id });
+
+    res.status(NO_CONTENT).send();
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error permanently deleting lesson" });
+  }
+};
+
 export const publishAdminQuest = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const id = (req.query.id as string) || (req.body.id as string) || (req.body.questId as string);

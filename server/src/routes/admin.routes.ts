@@ -31,6 +31,14 @@ import {
   publishAdminQuest,
   deleteQuestAdmin,
   deleteLessonAdmin,
+  deleteStudioQuest,
+  getDeletedStudioQuests,
+  restoreStudioQuest,
+  permanentlyDeleteStudioQuest,
+  deleteStudioLesson,
+  getDeletedStudioLessons,
+  restoreStudioLesson,
+  permanentlyDeleteStudioLesson,
 } from "@/controllers/admin.controller";
 import { deleteQuest, saveQuest } from "@/controllers/quest.controller";
 import { fetchChannels, fetchRoles, fetchServers } from "@/controllers/hub.auth.controller";
@@ -135,6 +143,14 @@ router
   .patch("/restore-studio-campaign", restoreStudioCampaign)
   .delete("/permanent-studio-campaign", permanentlyDeleteStudioCampaign)
   .get("/studio-quests", getStudioQuests)
-  .get("/studio-lessons", getStudioLessons);
+  .delete("/studio-quests", deleteStudioQuest)
+  .get("/deleted-studio-quests", getDeletedStudioQuests)
+  .patch("/restore-studio-quest", restoreStudioQuest)
+  .delete("/permanent-studio-quest", permanentlyDeleteStudioQuest)
+  .get("/studio-lessons", getStudioLessons)
+  .delete("/studio-lessons", deleteStudioLesson)
+  .get("/deleted-studio-lessons", getDeletedStudioLessons)
+  .patch("/restore-studio-lesson", restoreStudioLesson)
+  .delete("/permanent-studio-lesson", permanentlyDeleteStudioLesson);
 
 export default router;
