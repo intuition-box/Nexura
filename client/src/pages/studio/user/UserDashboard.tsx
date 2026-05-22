@@ -45,7 +45,7 @@ export default function userDashboard() {
         method: "GET",
       });
       const pendingTasks = res?.pendingTasks ?? [];
-      setQuestTasks(pendingTasks.filter((task) => task.page === "user"));
+      setQuestTasks(pendingTasks.filter((task) => task.page === "user" || task.page === "quest"));
     } catch (err) {
       console.error("Failed to fetch quests:", err);
       setQuestTasks([]);
