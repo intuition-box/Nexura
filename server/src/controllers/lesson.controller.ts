@@ -756,11 +756,13 @@ export const getMiniLessonAndQuestions = async (req: GlobalRequest, res: GlobalR
       return;
     }
 
-    const lessonExists = await lesson.findById(lessonId).select("status").lean();
-    if (!lessonExists || lessonExists.status !== "published") {
+    const lessonDoc = await lesson.findById(lessonId).select("status section section2Name").lean();
+    if (!lessonDoc || lessonDoc.status !== "published") {
       res.status(NOT_FOUND).json({ error: "lesson not found" });
       return;
     }
+
+    const hasSection2 = lessonDoc.section === 2;
 
     const [miniLessons, questions, videoLessons] = await Promise.all([
       miniLesson.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
@@ -787,7 +789,28 @@ export const getMiniLessonAndQuestions = async (req: GlobalRequest, res: GlobalR
       mergedLessonsQuestions.push(mergedSingleQuestion);
     }
 
-    res.status(OK).json({ message: "mini lessons and questions fetched", miniLessons, questions: mergedLessonsQuestions, videoLessons });
+    // Group by section for structured output
+    const section1 = {
+      miniLessons: miniLessons.filter((m: any) => (m.section || 1) === 1),
+      questions: mergedLessonsQuestions.filter((q: any) => (q.section || 1) === 1),
+      videoLessons: videoLessons.filter((v: any) => (v.section || 1) === 1),
+    };
+    const section2 = hasSection2 ? {
+      name: lessonDoc.section2Name || "Section 2",
+      miniLessons: miniLessons.filter((m: any) => m.section === 2),
+      questions: mergedLessonsQuestions.filter((q: any) => q.section === 2),
+      videoLessons: videoLessons.filter((v: any) => v.section === 2),
+    } : null;
+
+    res.status(OK).json({
+      message: "mini lessons and questions fetched",
+      miniLessons,
+      questions: mergedLessonsQuestions,
+      videoLessons,
+      hasSection2,
+      section1,
+      section2,
+    });
   } catch (error) {
     logger.error(error);
     res.status(INTERNAL_SERVER_ERROR).json({ error: "error getting mini lesson and questions" });

@@ -75,7 +75,8 @@ type LessonStep =
   | { kind: "mini"; key: string; text: string }
   | { kind: "question"; key: string; question: LessonQuestion }
   | { kind: "video"; key: string; url: string }
-  | { kind: "claim"; key: string };
+  | { kind: "claim"; key: string }
+  | { kind: "section-header"; key: string; label: string };
 
 const normalizeApiMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) return error.message;
@@ -105,6 +106,8 @@ export default function LessonPage() {
   const [miniLessons, setMiniLessons] = useState<MiniLesson[]>([]);
   const [questions, setQuestions] = useState<LessonQuestion[]>([]);
   const [videoLessons, setVideoLessons] = useState<VideoLesson[]>([]);
+  const [hasSection2, setHasSection2] = useState(false);
+  const [section2Name, setSection2Name] = useState("");
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>(() => {
     try {
       if (!lessonId) return {};
@@ -160,17 +163,6 @@ export default function LessonPage() {
   const lessonSteps = useMemo<LessonStep[]>(() => {
     type AnyItem = { kind: "mini"; entry: MiniLesson } | { kind: "question"; entry: LessonQuestion } | { kind: "video"; entry: VideoLesson };
     const kindPriority = (k: string) => (k === "mini" ? 0 : k === "video" ? 1 : 2);
-    const combined: AnyItem[] = [
-      ...miniLessons.map((entry) => ({ kind: "mini" as const, entry })),
-      ...questions.map((entry) => ({ kind: "question" as const, entry })),
-      ...videoLessons.map((entry) => ({ kind: "video" as const, entry })),
-    ].sort((a, b) => {
-      const pk = kindPriority(a.kind) - kindPriority(b.kind);
-      if (pk !== 0) return pk;
-      const orderDiff = (a.entry.order ?? 0) - (b.entry.order ?? 0);
-      if (orderDiff !== 0) return orderDiff;
-      return (a.entry.createdAt ?? "").localeCompare(b.entry.createdAt ?? "");
-    });
     const sanitize = (value: unknown): string => {
       if (typeof value !== "string") return "";
       return value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
@@ -182,31 +174,68 @@ export default function LessonPage() {
     const outroHeader = "Great job!";
     const outroBody = `You finished the quiz on ${lessonTitle}`;
 
-    // Build steps with one intro/outro per contiguous quiz group
-    const steps: LessonStep[] = [];
-    let i = 0;
-    while (i < combined.length) {
-      const item = combined[i];
-      if (item.kind === "question") {
-        steps.push({ kind: "intro", key: `intro-group-${item.entry._id}`, header: introHeader, body: introBody, trophy: "bronze" });
-        while (i < combined.length && combined[i].kind === "question") {
-          const qEntry = combined[i].entry;
-          steps.push({ kind: "question", key: `question-${qEntry._id}`, question: qEntry });
+    // Build steps for a single section from combined items
+    const buildSectionSteps = (items: AnyItem[]): LessonStep[] => {
+      const sorted = [...items].sort((a, b) => {
+        const pk = kindPriority(a.kind) - kindPriority(b.kind);
+        if (pk !== 0) return pk;
+        const orderDiff = (a.entry.order ?? 0) - (b.entry.order ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        return (a.entry.createdAt ?? "").localeCompare(b.entry.createdAt ?? "");
+      });
+
+      const steps: LessonStep[] = [];
+      let i = 0;
+      while (i < sorted.length) {
+        const item = sorted[i];
+        if (item.kind === "question") {
+          steps.push({ kind: "intro", key: `intro-group-${item.entry._id}`, header: introHeader, body: introBody, trophy: "bronze" });
+          while (i < sorted.length && sorted[i].kind === "question") {
+            const qEntry = sorted[i].entry;
+            steps.push({ kind: "question", key: `question-${qEntry._id}`, question: qEntry });
+            i++;
+          }
+          steps.push({ kind: "outro", key: `outro-group-${sorted[i - 1].entry._id}`, header: outroHeader, body: outroBody, trophy: "silver" });
+        } else {
+          if (item.kind === "mini") {
+            steps.push({ kind: "mini", key: `mini-${item.entry._id}`, text: item.entry.text });
+          } else {
+            steps.push({ kind: "video", key: `video-${item.entry._id}`, url: item.entry.url });
+          }
           i++;
         }
-        steps.push({ kind: "outro", key: `outro-group-${combined[i - 1].entry._id}`, header: outroHeader, body: outroBody, trophy: "silver" });
-      } else {
-        if (item.kind === "mini") {
-          steps.push({ kind: "mini", key: `mini-${item.entry._id}`, text: item.entry.text });
-        } else {
-          steps.push({ kind: "video", key: `video-${item.entry._id}`, url: item.entry.url });
-        }
-        i++;
       }
+      return steps;
+    };
+
+    if (hasSection2) {
+      const s1Items: AnyItem[] = [
+        ...miniLessons.filter(m => (m.section || 1) === 1).map(e => ({ kind: "mini" as const, entry: e })),
+        ...questions.filter(q => (q.section || 1) === 1).map(e => ({ kind: "question" as const, entry: e })),
+        ...videoLessons.filter(v => (v.section || 1) === 1).map(e => ({ kind: "video" as const, entry: e })),
+      ];
+      const s2Items: AnyItem[] = [
+        ...miniLessons.filter(m => m.section === 2).map(e => ({ kind: "mini" as const, entry: e })),
+        ...questions.filter(q => q.section === 2).map(e => ({ kind: "question" as const, entry: e })),
+        ...videoLessons.filter(v => v.section === 2).map(e => ({ kind: "video" as const, entry: e })),
+      ];
+
+      return [
+        ...buildSectionSteps(s1Items),
+        { kind: "section-header" as const, key: "section-2-header", label: section2Name || "Section 2" },
+        ...buildSectionSteps(s2Items),
+        { kind: "claim" as const, key: "claim" },
+      ];
     }
 
-    return [...steps, { kind: "claim" as const, key: "claim" }];
-  }, [miniLessons, questions, videoLessons, lesson?.title]);
+    // No section 2 — flat flow (original behavior)
+    const combined: AnyItem[] = [
+      ...miniLessons.map((entry) => ({ kind: "mini" as const, entry })),
+      ...questions.map((entry) => ({ kind: "question" as const, entry })),
+      ...videoLessons.map((entry) => ({ kind: "video" as const, entry })),
+    ];
+    return [...buildSectionSteps(combined), { kind: "claim" as const, key: "claim" }];
+  }, [miniLessons, questions, videoLessons, lesson?.title, hasSection2, section2Name]);
 
   const activeStep = lessonSteps[currentStep];
   const currentQuestion = activeStep?.kind === "question" ? activeStep.question : null;
@@ -275,6 +304,8 @@ export default function LessonPage() {
       setMiniLessons(nextMiniLessons);
       setQuestions(nextQuestions);
       setVideoLessons(nextVideoLessons);
+      setHasSection2(detailsResponse.hasSection2 || false);
+      setSection2Name(detailsResponse.section2?.name || "");
       // Merge server answers (done questions) into existing state without overwriting local selections
       if (!isRedoing.current && !isReview) {
         setSelectedAnswers((current) => ({ ...current, ...nextSelectedAnswers }));
@@ -787,6 +818,18 @@ export default function LessonPage() {
                   <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap py-2 text-center">
                     {activeStep.text}
                   </p>
+
+                /* Section header */
+                ) : activeStep?.kind === "section-header" ? (
+                  <div className="flex flex-col items-center py-4">
+                    <div className="flex items-center gap-3 w-full max-w-xs">
+                      <div className="flex-1 h-px bg-purple-400/30" />
+                      <h2 className="text-lg sm:text-xl font-bold text-purple-300 uppercase tracking-wider">
+                        {activeStep.label}
+                      </h2>
+                      <div className="flex-1 h-px bg-purple-400/30" />
+                    </div>
+                  </div>
 
                 /* Video */
                 ) : activeStep?.kind === "video" ? (
