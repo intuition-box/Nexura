@@ -992,7 +992,7 @@ export const banCreator = async (req: GlobalRequest, res: GlobalResponse) => {
 		}
 
 		// Skip if already banned
-		const alreadyBanned = await bannedUser.findById(ownerId).lean();
+		const alreadyBanned = await bannedUser.findOne({ userId: ownerId }).lean();
 		if (alreadyBanned) {
 			res.status(BAD_REQUEST).json({ error: "creator is already banned" });
 			return;
@@ -1054,8 +1054,19 @@ export const unbanCreator = async (req: GlobalRequest, res: GlobalResponse) => {
 export const getBannedCreators = async (_req: GlobalRequest, res: GlobalResponse) => {
 	try {
 		const banned = await bannedUser.find({}).sort({ createdAt: -1 }).lean();
-		const ids = banned.map(b => b.userId);
-		res.status(OK).json({ bannedCreatorIds: ids });
+		const adminIds = banned.map(b => b.userId);
+
+		// Resolve admin IDs to hub IDs for frontend comparison
+		const [userHubAdmins, projectHubAdmins] = await Promise.all([
+			userHubAdmin.find({ _id: { $in: adminIds } }).select("hub").lean(),
+			hubAdmin.find({ _id: { $in: adminIds } }).select("hub").lean(),
+		]);
+
+		const hubIds = new Set<string>();
+		for (const a of userHubAdmins) { if (a.hub) hubIds.add(String(a.hub)); }
+		for (const a of projectHubAdmins) { if (a.hub) hubIds.add(String(a.hub)); }
+
+		res.status(OK).json({ bannedCreatorIds: [...hubIds] });
 	} catch (error) {
 		logger.error(error);
 		res.status(INTERNAL_SERVER_ERROR).json({ error: "error fetching banned creators" });
