@@ -766,7 +766,7 @@ export const getMiniLessonAndQuestions = async (req: GlobalRequest, res: GlobalR
 
     const [miniLessons, questions, videoLessons] = await Promise.all([
       miniLesson.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
-      question.find({ lesson: lessonId }).select("options question lesson solution order createdAt introHeader introBody introTrophy outroHeader outroBody outroTrophy").sort({ order: 1, createdAt: 1 }).lean(),
+      question.find({ lesson: lessonId }).select("options question lesson solution order createdAt introHeader introBody introTrophy outroHeader outroBody outroTrophy section").sort({ order: 1, createdAt: 1 }).lean(),
       videoLesson.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
     ]);
     const questionsCompleted = id
