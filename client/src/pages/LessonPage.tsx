@@ -222,7 +222,7 @@ export default function LessonPage() {
 
       return [
         ...buildSectionSteps(s1Items),
-        { kind: "section-header" as const, key: "section-2-header", label: section2Name || "Section 2" },
+        { kind: "section-header" as const, key: "section-2-header", label: `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
         ...buildSectionSteps(s2Items),
         { kind: "claim" as const, key: "claim" },
       ];
@@ -821,14 +821,17 @@ export default function LessonPage() {
 
                 /* Section header */
                 ) : activeStep?.kind === "section-header" ? (
-                  <div className="flex flex-col items-center py-4">
+                  <div className="flex flex-col items-center py-6 gap-3">
                     <div className="flex items-center gap-3 w-full max-w-xs">
                       <div className="flex-1 h-px bg-purple-400/30" />
                       <h2 className="text-lg sm:text-xl font-bold text-purple-300 uppercase tracking-wider">
-                        {activeStep.label}
+                        {section2Name || "Section 2"}
                       </h2>
                       <div className="flex-1 h-px bg-purple-400/30" />
                     </div>
+                    <p className="text-sm sm:text-base leading-relaxed text-white/70 text-center whitespace-pre-line">
+                      {activeStep.label}
+                    </p>
                   </div>
 
                 /* Video */
