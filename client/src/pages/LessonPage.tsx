@@ -176,7 +176,7 @@ export default function LessonPage() {
     const outroBody = `You finished the quiz on ${lessonTitle}`;
 
     // Build steps for a single section from combined items
-    const buildSectionSteps = (items: AnyItem[], omitLastOutro = false, omitAllIntros = false): LessonStep[] => {
+    const buildSectionSteps = (items: AnyItem[], omitLastOutro = false): LessonStep[] => {
       const sorted = [...items].sort((a, b) => {
         const pk = kindPriority(a.kind) - kindPriority(b.kind);
         if (pk !== 0) return pk;
@@ -190,9 +190,7 @@ export default function LessonPage() {
       while (i < sorted.length) {
         const item = sorted[i];
         if (item.kind === "question") {
-          if (!omitAllIntros) {
-            steps.push({ kind: "intro", key: `intro-group-${item.entry._id}`, header: introHeader, body: introBody, trophy: "bronze" });
-          }
+          steps.push({ kind: "intro", key: `intro-group-${item.entry._id}`, header: introHeader, body: introBody, trophy: "bronze" });
           while (i < sorted.length && sorted[i].kind === "question") {
             const qEntry = sorted[i].entry;
             steps.push({ kind: "question", key: `question-${qEntry._id}`, question: qEntry });
@@ -229,7 +227,7 @@ export default function LessonPage() {
       return [
         ...buildSectionSteps(s1Items, true),
         { kind: "section-header" as const, key: "section-2-header", label: section2IntroBody || `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
-        ...buildSectionSteps(s2Items, false, true),
+        ...buildSectionSteps(s2Items),
         { kind: "claim" as const, key: "claim" },
       ];
     }
