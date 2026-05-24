@@ -232,13 +232,13 @@ export default function LessonPage() {
       ];
     }
 
-    // No section 2 — flat flow (original behavior)
+    // No section 2 — flat flow, also omit last outro
     const combined: AnyItem[] = [
       ...miniLessons.map((entry) => ({ kind: "mini" as const, entry })),
       ...questions.map((entry) => ({ kind: "question" as const, entry })),
       ...videoLessons.map((entry) => ({ kind: "video" as const, entry })),
     ];
-    return [...buildSectionSteps(combined), { kind: "claim" as const, key: "claim" }];
+    return [...buildSectionSteps(combined, true), { kind: "claim" as const, key: "claim" }];
   }, [miniLessons, questions, videoLessons, lesson?.title, hasSection2, section2Name, section2IntroBody]);
 
   const activeStep = lessonSteps[currentStep];
