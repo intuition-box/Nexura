@@ -227,7 +227,7 @@ export default function LessonPage() {
       return [
         ...buildSectionSteps(s1Items, true),
         { kind: "section-header" as const, key: "section-2-header", label: section2IntroBody || `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
-        ...buildSectionSteps(s2Items),
+        ...buildSectionSteps(s2Items, true),
         { kind: "claim" as const, key: "claim" },
       ];
     }
