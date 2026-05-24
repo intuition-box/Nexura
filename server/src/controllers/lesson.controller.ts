@@ -45,7 +45,7 @@ const getNextLessonContentOrder = async (lessonId: string) => {
 
 export const createLesson = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { title, description, reward, disclaimer, completionTrophy, completionTitle, completionMessage, section, section2Name } = req.body;
+    const { title, description, reward, disclaimer, completionTrophy, completionTitle, completionMessage, section, section2Name, section2IntroBody } = req.body;
 
     if (!title?.trim() || !description?.trim() || reward == null) {
       res.status(BAD_REQUEST).json({ error: "title, description, and reward are required" });
@@ -78,6 +78,7 @@ export const createLesson = async (req: GlobalRequest, res: GlobalResponse) => {
         completionMessage: completionMessage || "",
         section: section ? Number(section) : 1,
         section2Name: typeof section2Name === "string" ? section2Name.trim() : "",
+        section2IntroBody: typeof section2IntroBody === "string" ? section2IntroBody.trim() : "",
         coverImage: coverImage || "",
         profileImage: profileImage || "",
         status: "draft",
@@ -102,7 +103,7 @@ export const createLesson = async (req: GlobalRequest, res: GlobalResponse) => {
 
 export const updateLesson = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { lessonId, title, description, reward, disclaimer, completionTrophy, completionTitle, completionMessage, status, section, section2Name } = req.body as {
+    const { lessonId, title, description, reward, disclaimer, completionTrophy, completionTitle, completionMessage, status, section, section2Name, section2IntroBody } = req.body as {
       lessonId?: string;
       title?: string;
       description?: string;
@@ -114,6 +115,7 @@ export const updateLesson = async (req: GlobalRequest, res: GlobalResponse) => {
       status?: "draft" | "published";
       section?: number;
       section2Name?: string;
+      section2IntroBody?: string;
     };
 
     if (!lessonId) {
@@ -153,6 +155,7 @@ export const updateLesson = async (req: GlobalRequest, res: GlobalResponse) => {
     if (completionMessage !== undefined) lessonExists.completionMessage = completionMessage;
     if (section !== undefined) lessonExists.section = Number(section);
     if (typeof section2Name === "string") lessonExists.section2Name = section2Name.trim();
+    if (typeof section2IntroBody === "string") lessonExists.section2IntroBody = section2IntroBody.trim();
     
     // Handle status field - allow updating to draft or published
     if (status === "draft" || status === "published") {
@@ -731,7 +734,7 @@ export const getLessonDetailsForAdmin = async (req: GlobalRequest, res: GlobalRe
       miniLesson.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
       question.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
       videoLesson.find({ lesson: lessonId }).sort({ order: 1, createdAt: 1 }).lean(),
-      lesson.findById(lessonId).select("section2Name").lean(),
+      lesson.findById(lessonId).select("section2Name section2IntroBody").lean(),
     ]);
 
     res.status(OK).json({
@@ -740,6 +743,7 @@ export const getLessonDetailsForAdmin = async (req: GlobalRequest, res: GlobalRe
       questions,
       videoLessons,
       section2Name: (lessonDoc as any)?.section2Name || "",
+      section2IntroBody: (lessonDoc as any)?.section2IntroBody || "",
     });
   } catch (error) {
     logger.error(error);
@@ -756,7 +760,7 @@ export const getMiniLessonAndQuestions = async (req: GlobalRequest, res: GlobalR
       return;
     }
 
-    const lessonDoc = await lesson.findById(lessonId).select("status section section2Name").lean();
+    const lessonDoc = await lesson.findById(lessonId).select("status section section2Name section2IntroBody").lean();
     if (!lessonDoc || lessonDoc.status !== "published") {
       res.status(NOT_FOUND).json({ error: "lesson not found" });
       return;
@@ -808,6 +812,7 @@ export const getMiniLessonAndQuestions = async (req: GlobalRequest, res: GlobalR
       questions: mergedLessonsQuestions,
       videoLessons,
       hasSection2,
+      section2IntroBody: lessonDoc.section2IntroBody || "",
       section1,
       section2,
     });

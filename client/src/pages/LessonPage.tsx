@@ -108,6 +108,7 @@ export default function LessonPage() {
   const [videoLessons, setVideoLessons] = useState<VideoLesson[]>([]);
   const [hasSection2, setHasSection2] = useState(false);
   const [section2Name, setSection2Name] = useState("");
+  const [section2IntroBody, setSection2IntroBody] = useState("");
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>(() => {
     try {
       if (!lessonId) return {};
@@ -222,7 +223,7 @@ export default function LessonPage() {
 
       return [
         ...buildSectionSteps(s1Items),
-        { kind: "section-header" as const, key: "section-2-header", label: `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
+        { kind: "section-header" as const, key: "section-2-header", label: section2IntroBody || `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
         ...buildSectionSteps(s2Items),
         { kind: "claim" as const, key: "claim" },
       ];
@@ -235,7 +236,7 @@ export default function LessonPage() {
       ...videoLessons.map((entry) => ({ kind: "video" as const, entry })),
     ];
     return [...buildSectionSteps(combined), { kind: "claim" as const, key: "claim" }];
-  }, [miniLessons, questions, videoLessons, lesson?.title, hasSection2, section2Name]);
+  }, [miniLessons, questions, videoLessons, lesson?.title, hasSection2, section2Name, section2IntroBody]);
 
   const activeStep = lessonSteps[currentStep];
   const currentQuestion = activeStep?.kind === "question" ? activeStep.question : null;
@@ -306,6 +307,7 @@ export default function LessonPage() {
       setVideoLessons(nextVideoLessons);
       setHasSection2(detailsResponse.hasSection2 || false);
       setSection2Name(detailsResponse.section2?.name || "");
+      setSection2IntroBody(detailsResponse.section2IntroBody || "");
       // Merge server answers (done questions) into existing state without overwriting local selections
       if (!isRedoing.current && !isReview) {
         setSelectedAnswers((current) => ({ ...current, ...nextSelectedAnswers }));
