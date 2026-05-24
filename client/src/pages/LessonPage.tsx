@@ -176,7 +176,7 @@ export default function LessonPage() {
     const outroBody = `You finished the quiz on ${lessonTitle}`;
 
     // Build steps for a single section from combined items
-    const buildSectionSteps = (items: AnyItem[]): LessonStep[] => {
+    const buildSectionSteps = (items: AnyItem[], omitLastOutro = false): LessonStep[] => {
       const sorted = [...items].sort((a, b) => {
         const pk = kindPriority(a.kind) - kindPriority(b.kind);
         if (pk !== 0) return pk;
@@ -196,7 +196,10 @@ export default function LessonPage() {
             steps.push({ kind: "question", key: `question-${qEntry._id}`, question: qEntry });
             i++;
           }
-          steps.push({ kind: "outro", key: `outro-group-${sorted[i - 1].entry._id}`, header: outroHeader, body: outroBody, trophy: "silver" });
+          // Skip outro if this is the last group and we're omitting it (section 1 → section 2 bridge)
+          if (!omitLastOutro || i < sorted.length) {
+            steps.push({ kind: "outro", key: `outro-group-${sorted[i - 1].entry._id}`, header: outroHeader, body: outroBody, trophy: "silver" });
+          }
         } else {
           if (item.kind === "mini") {
             steps.push({ kind: "mini", key: `mini-${item.entry._id}`, text: item.entry.text });
@@ -222,7 +225,7 @@ export default function LessonPage() {
       ];
 
       return [
-        ...buildSectionSteps(s1Items),
+        ...buildSectionSteps(s1Items, true),
         { kind: "section-header" as const, key: "section-2-header", label: section2IntroBody || `Excellent work!\nYou just completed section 1 of ${lessonTitle}. You can now proceed to section 2.` },
         ...buildSectionSteps(s2Items),
         { kind: "claim" as const, key: "claim" },
