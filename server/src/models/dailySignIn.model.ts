@@ -9,18 +9,7 @@ const dailySignInSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "users",
     required: true,
-  },
-  month: {
-    type: String,
-    required: true,
-  },
-  dayCount: {
-    type: Number,
-    default: 1
-  },
-  xpClaimedThisMonth: {
-    type: Number,
-    default: 0,
+    unique: true
   }
 }, { timestamps: true });
 
