@@ -294,22 +294,30 @@ export const rewardXpBatch = async (req: GlobalRequest, res: GlobalResponse) => 
 		}
 
 		const existing = await user.find({ address: { $in: normalized } }, { address: 1, username: 1 }).lean();
-		const matched = normalized.filter((addr) => existing.some((u) => (u.address).toLowerCase() === addr)) as unknown as { address: string, username: string }[];
-		const notFound = normalized.filter((addr) => !existing.some((u) => (u.address).toLowerCase() === addr)) as unknown as { address: string, username: string }[];;
+    const matched: {address: string, username: string}[] = [];
+		const notFound: {address: string, username: string | undefined}[] = [];
 
-		const logs: any[] = [];
-		const adminObjId = req.id ? new mongoose.Types.ObjectId(req.id) : undefined;
+    const logs: any[] = [];
+    const ids = [];
+    const adminObjId = req.id ? new mongoose.Types.ObjectId(req.id) : undefined;
 
-		for (const match of matched) {
-			logs.push({
-        address: match.address,
-				username: match.username,
-				amount: xpAmount,
-				status: "success",
-				type: "batch",
-				adminId: adminObjId
-			});
-		}
+    for (const addr of normalized) {
+      const existingUser = existing.find((u) => u.address === addr);
+      if (existingUser) {
+        matched.push(existingUser);
+        ids.push(existingUser._id);
+        logs.push({
+          address: existingUser.address,
+  				username: existingUser.username,
+  				amount: xpAmount,
+  				status: "success",
+  				type: "batch",
+  				adminId: adminObjId
+  			});
+      } else {
+        notFound.push({ address: addr, username: undefined });
+      }
+    }
 
 		for (const nf of notFound) {
 			logs.push({
@@ -328,7 +336,7 @@ export const rewardXpBatch = async (req: GlobalRequest, res: GlobalResponse) => 
 
 		if (matched.length > 0) {
 			await user.updateMany(
-				{ address: { $in: matched } },
+				{ _id: { $in: ids } },
 				{ $inc: { xp: xpAmount, eventsWon: 1 } },
 			);
 		}

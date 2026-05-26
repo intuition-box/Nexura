@@ -28,7 +28,7 @@
     "@0xintuition/graphql": "^2.0.2",
     "@0xintuition/sdk": "^2.0.2",
     "@aws-sdk/client-s3": "^3.929.0",
-    "@samoris/tns-sdk": "^1.0.1",
+    "@samoris/tns-sdk": "^1.0.2",
     "@xdevplatform/xdk": "^0.3.0",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
