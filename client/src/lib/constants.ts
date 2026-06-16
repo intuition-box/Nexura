@@ -1,4 +1,5 @@
 import { getNetwork } from "./runtimeNetwork";
+import { DISCORD_CLIENT_ID, X_CLIENT_ID } from "./oauthClients";
 
 const normalizedNetwork = (process.env.NEXT_PUBLIC_NETWORK as string | undefined)?.trim().toLowerCase();
 export const network: "testnet" | "mainnet" = normalizedNetwork === "mainnet" ? "mainnet" : "testnet";
@@ -41,7 +42,7 @@ export const url = process.env.NEXT_PUBLIC_CLIENT_URL || "https://nexura-app.ver
 
 export const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID;
 
-const VITE_DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
+const VITE_DISCORD_CLIENT_ID = DISCORD_CLIENT_ID;
 
 export const PROXY_FEE_CONTRACT = process.env.NEXT_PUBLIC_PROXY_FEE_CONTRACT as `0x${string}`;
 
@@ -49,7 +50,7 @@ export const discordAuthUrl = "https://discord.com/oauth2/authorize" + "?client_
 
 export const discordHubAuthUrl = "https://discord.com/oauth2/authorize" + "?client_id=" + VITE_DISCORD_CLIENT_ID + "&redirect_uri=" + encodeURIComponent(BACKEND_URL + "/api/hub/discord/callback") + "&response_type=code" + "&scope=identify+guilds+bot+applications.commands";
 
-export const VITE_X_CLIENT_ID = process.env.NEXT_PUBLIC_X_CLIENT_ID;
+export const VITE_X_CLIENT_ID = X_CLIENT_ID;
 
 export const NEXONS: Record<number, { address: `0x${string}`, metadata: string }> = {
 	1: {
