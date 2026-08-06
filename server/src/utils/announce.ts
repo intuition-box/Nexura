@@ -72,7 +72,7 @@ export const announceMilestone = async (data: any) => {
 			.setColor("#8B5CF6")
 			.setTitle("XP Milestone Unlocked! 🎉")
 			.setDescription(
-				`Congratulations ${member.toString()} on reaching **${data.milestone.toLocaleString()} XP!**`,
+				`Congratulations <@${data.discordId}> on reaching **${data.milestone.toLocaleString()} XP!**`,
 			)
 			.addFields(
 				{
