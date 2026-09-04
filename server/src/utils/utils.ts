@@ -11,9 +11,23 @@ import { checksumAddress, formatEther, parseAbi, type Address } from "viem";
 import { announceMilestone } from "./announce";
 import { GuildMember } from "discord.js";
 import client from "../../client";
+import axios from "axios";
 
 export const padNumber = (numberToBePadded: number) => {
 	return numberToBePadded.toString().padStart(3, "0");
+}
+
+export const getLocation = async (ip: string) => {
+	const { data } = await axios.get(
+    `https://ipapi.co/${ip}/json/`
+  );
+
+  return {
+    continent: data.continent_name,
+    continentCode: data.continent_code,
+    country: data.country_name,
+    countryCode: data.country_code,
+  }
 }
 
 export const hashPassword = async (password: string) => {

@@ -71,6 +71,76 @@ const deriveBanTimestamp = (record: { _id: unknown; createdAt?: Date | string })
   return null;
 };
 
+export const getLocationAnalytics = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const { continent } = req.query as { continent?: string };
+
+    if (!continent) {
+      const data = await user.aggregate([
+        {
+          $group: {
+            _id: "$location.continent",
+            users: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            continent: "$_id",
+            users: 1,
+          },
+        },
+        {
+          $sort: {
+            users: -1,
+          },
+        },
+      ]);
+
+      res.status(OK).json({ message: "location analytics fetched", data });
+      return;
+    }
+
+    const countries = await user.aggregate([
+      {
+        $match: {
+          "location.continent": continent,
+        },
+      },
+      {
+        $group: {
+          _id: "$location.country",
+  
+          users: {
+            $sum: 1,
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+
+          country: "$_id",
+
+          users: 1,
+        },
+      },
+      {
+        $sort: {
+          users: -1,
+        },
+      },
+    ]);
+
+    res.status(OK).json({ message: "location analytics fetched", data: countries });
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error getting location analytics" });
+  }
+};
+
 export const publishEcosystemDapp = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { dappId, action }: { dappId: string, action?: "paused" | "active" } = req.body;

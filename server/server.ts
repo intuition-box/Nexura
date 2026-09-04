@@ -16,7 +16,7 @@ const server = express();
 
 server.use(cors({ origin: SERVER_ENV.ALLOWED_ORIGINS }));
 server.use(helmet());
-server.set("trust proxy", 1);
+server.set("trust proxy", true);
 server.use(express.json());
 server.use(express.urlencoded({ extended: true }));
 

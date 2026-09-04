@@ -10,6 +10,24 @@ const userSchema = new Schema({
 		type: Number,
 		default: 0,
   },
+  location: {
+    country: {
+      type: String,
+      default: "",
+    },
+    countryCode: {
+      type: String,
+      default: "",
+    },
+    continent: {
+      type: String,
+      default: "",
+    },
+    continentCode: {
+      type: String,
+      default: "",
+    },    
+  },
   totalCheckIns: {
     type: Number,
     default: 0
