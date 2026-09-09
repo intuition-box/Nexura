@@ -19,7 +19,7 @@ export const padNumber = (numberToBePadded: number) => {
 
 export const getLocation = async (ip: string) => {
 	const { data } = await axios.get(
-    `https://ipapi.co/json?token=${IPAPI_TOKEN}`
+    `https://ipapi.co/${ip}/json?token=${IPAPI_TOKEN}`
   );
 
   return {
