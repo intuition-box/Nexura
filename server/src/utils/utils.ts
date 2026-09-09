@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { JWT_SECRET, network, REFRESH_SECRET, ALCHEMY_API_KEY, STUDIO_FEE_CONTRACT } from "./env.utils";
+import { JWT_SECRET, network, IPAPI_TOKEN, REFRESH_SECRET, STUDIO_FEE_CONTRACT } from "./env.utils";
 import { getPublicClient, getEthMainnetClient } from "./account";
 import { NexonsAddress, STUDIO_ABI, RELIC_CONTRACT } from "./constants";
 import { ethers } from "ethers";
@@ -19,7 +19,7 @@ export const padNumber = (numberToBePadded: number) => {
 
 export const getLocation = async (ip: string) => {
 	const { data } = await axios.get(
-    `https://ipapi.co/${ip}/json/`
+    `https://ipapi.co/json?token=${IPAPI_TOKEN}`
   );
 
   return {
