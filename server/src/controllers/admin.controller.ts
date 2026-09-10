@@ -79,7 +79,7 @@ export const getLocationAnalytics = async (req: GlobalRequest, res: GlobalRespon
       const data = await user.aggregate([
         {
           $group: {
-            _id: "$location.continent",
+            _id: "$location.continentCode",
             users: {
               $sum: 1,
             },
@@ -88,7 +88,7 @@ export const getLocationAnalytics = async (req: GlobalRequest, res: GlobalRespon
         {
           $project: {
             _id: 0,
-            continent: "$_id",
+            continentCode: "$_id",
             users: 1,
           },
         },
@@ -106,7 +106,7 @@ export const getLocationAnalytics = async (req: GlobalRequest, res: GlobalRespon
     const countries = await user.aggregate([
       {
         $match: {
-          "location.continent": continent,
+          "location.continentCode": continent,
         },
       },
       {
