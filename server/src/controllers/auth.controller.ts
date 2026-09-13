@@ -20,7 +20,7 @@ import {
 } from "@/utils/env.utils";
 import { formatDate } from "date-fns";
 import { user } from "@/models/user.model";
-import { getRefreshToken, JWT } from "@/utils/utils";
+import { getLocation, getRefreshToken, JWT } from "@/utils/utils";
 import { referredUsers } from "@/models/referrer.model";
 import axios from "axios";
 import { cvModel } from "@/models/cv.models";
@@ -228,7 +228,17 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		return;
   }
 
-	const lowerCaseAddress = address.toLowerCase();
+  const lowerCaseAddress = address.toLowerCase();
+
+	const ip =
+    req.headers["x-forwarded-for"]?.toString().split(",")[0] ||
+    req.socket.remoteAddress || req.ip;
+
+  let location = undefined;
+
+  if (ip) {
+		location = await getLocation(ip!);
+  }
 
 	try {
 
@@ -251,11 +261,11 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 
 			const referral = {
 				code: referrerCode,
-			};
+      };
 
 			const userReferrer = await user.findOne({ "referral.code": referrer });
 
-			const newUser = new user({ address: lowerCaseAddress, username, referral, dateJoined });
+			const newUser = new user({ address: lowerCaseAddress, username, referral, dateJoined, location });
 
 			const id = newUser._id;
 
@@ -268,7 +278,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			await newUser.save();
 
       const accessToken = JWT.sign(id);
-			const refreshToken = getRefreshToken(id);
+      const refreshToken = getRefreshToken(id);
 
 			req.id = id as unknown as string;
 
@@ -285,7 +295,10 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		const accessToken = JWT.sign(userExists._id);
 		const refreshToken = getRefreshToken(userExists._id);
 
-		req.id = userExists._id as unknown as string;
+    req.id = userExists._id as unknown as string;
+
+		userExists.location = location;
+		await userExists.save();
 
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,

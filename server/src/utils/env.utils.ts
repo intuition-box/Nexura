@@ -45,6 +45,7 @@ export const SERVER_ENV = z
   })
   .parse(process.env);
 
+export const IPAPI_TOKEN = process.env.IPAPI_TOKEN as string;
 export const PRIVATE_KEY = process.env.PRIVATE_KEY as `0x${string}`;
 export const AWS_REGION = process.env.AWS_REGION as string;
 export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY as string;

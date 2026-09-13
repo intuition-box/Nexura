@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { JWT_SECRET, network, REFRESH_SECRET, ALCHEMY_API_KEY, STUDIO_FEE_CONTRACT } from "./env.utils";
+import { JWT_SECRET, network, IPAPI_TOKEN, REFRESH_SECRET, STUDIO_FEE_CONTRACT } from "./env.utils";
 import { getPublicClient, getEthMainnetClient } from "./account";
 import { NexonsAddress, STUDIO_ABI, RELIC_CONTRACT } from "./constants";
 import { ethers } from "ethers";
@@ -11,9 +11,23 @@ import { checksumAddress, formatEther, parseAbi, type Address } from "viem";
 import { announceMilestone } from "./announce";
 import { GuildMember } from "discord.js";
 import client from "../../client";
+import axios from "axios";
 
 export const padNumber = (numberToBePadded: number) => {
 	return numberToBePadded.toString().padStart(3, "0");
+}
+
+export const getLocation = async (ip: string) => {
+	const { data } = await axios.get(
+    `https://ipapi.co/${ip}/json?token=${IPAPI_TOKEN}`
+  );
+
+  return {
+    continent: data.continent_name,
+    continentCode: data.continent_code,
+    country: data.country_name,
+    countryCode: data.country_code,
+  }
 }
 
 export const hashPassword = async (password: string) => {
