@@ -39,7 +39,7 @@
         "@radix-ui/react-toggle": "^1.1.12",
         "@radix-ui/react-toggle-group": "^1.1.13",
         "@radix-ui/react-tooltip": "^1.2.10",
-        "@rainbow-me/rainbowkit": "^2.2.11",
+        "@rainbow-me/rainbowkit": "2.2.11",
         "@reown/appkit": "^1.8.21",
         "@reown/appkit-adapter-wagmi": "^1.8.21",
         "@samoris/tns-sdk": "^1.0.2",
@@ -1981,21 +1981,7 @@
 
     "@metamask/utils/uuid": ["uuid@9.0.1", "", { "bin": "dist/bin/uuid" }, ""],
 
-    "@nivo/annotations/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
-
-    "@nivo/arcs/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/arcs/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
-
-    "@nivo/axes/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
-
-    "@nivo/core/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
-
     "@nivo/scales/@types/d3-time-format": ["@types/d3-time-format@3.0.4", "", {}, ""],
-
-    "@nivo/text/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
-
-    "@nivo/tooltip/@react-spring/web": ["@react-spring/web@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/core": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1", "csstype": "^3.2.3" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, ""],
 
     "@reown/appkit-wallet/zod": ["zod@3.22.4", "", {}, ""],
 
@@ -2029,8 +2015,6 @@
 
     "@walletconnect/ethereum-provider/@reown/appkit": ["@reown/appkit@1.7.8", "", { "dependencies": { "@reown/appkit-common": "1.7.8", "@reown/appkit-controllers": "1.7.8", "@reown/appkit-pay": "1.7.8", "@reown/appkit-polyfills": "1.7.8", "@reown/appkit-scaffold-ui": "1.7.8", "@reown/appkit-ui": "1.7.8", "@reown/appkit-utils": "1.7.8", "@reown/appkit-wallet": "1.7.8", "@walletconnect/types": "2.21.0", "@walletconnect/universal-provider": "2.21.0", "bs58": "6.0.0", "valtio": "1.13.2", "viem": ">=2.29.0" } }, ""],
 
-    "@walletconnect/ethereum-provider/@walletconnect/keyvaluestorage": ["@walletconnect/keyvaluestorage@1.1.1", "", { "dependencies": { "@walletconnect/safe-json": "^1.0.1", "idb-keyval": "^6.2.1", "unstorage": "^1.9.0" }, "peerDependencies": { "@react-native-async-storage/async-storage": "1.x" }, "optionalPeers": ["@react-native-async-storage/async-storage"] }, ""],
-
     "@walletconnect/ethereum-provider/@walletconnect/sign-client": ["@walletconnect/sign-client@2.21.1", "", { "dependencies": { "@walletconnect/core": "2.21.1", "@walletconnect/events": "1.0.1", "@walletconnect/heartbeat": "1.2.2", "@walletconnect/jsonrpc-utils": "1.0.8", "@walletconnect/logger": "2.1.2", "@walletconnect/time": "1.0.2", "@walletconnect/types": "2.21.1", "@walletconnect/utils": "2.21.1", "events": "3.3.0" } }, ""],
 
     "@walletconnect/ethereum-provider/@walletconnect/types": ["@walletconnect/types@2.21.1", "", { "dependencies": { "@walletconnect/events": "1.0.1", "@walletconnect/heartbeat": "1.2.2", "@walletconnect/jsonrpc-types": "1.0.4", "@walletconnect/keyvaluestorage": "1.1.1", "@walletconnect/logger": "2.1.2", "events": "3.3.0" } }, ""],
@@ -2051,13 +2035,9 @@
 
     "@walletconnect/relay-auth/@noble/hashes": ["@noble/hashes@1.7.0", "", {}, ""],
 
-    "@walletconnect/relay-auth/uint8arrays": ["uint8arrays@3.1.1", "", { "dependencies": { "multiformats": "^9.4.2" } }, ""],
-
     "@walletconnect/safe-json/tslib": ["tslib@1.14.1", "", {}, ""],
 
     "@walletconnect/time/tslib": ["tslib@1.14.1", "", {}, ""],
-
-    "@walletconnect/utils/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, ""],
 
     "@walletconnect/utils/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
 
@@ -2087,8 +2067,6 @@
 
     "chokidar/glob-parent": ["glob-parent@5.1.2", "", { "dependencies": { "is-glob": "^4.0.1" } }, ""],
 
-    "cliui/string-width": ["string-width@4.2.3", "", { "dependencies": { "emoji-regex": "^8.0.0", "is-fullwidth-code-point": "^3.0.0", "strip-ansi": "^6.0.1" } }, ""],
-
     "cliui/wrap-ansi": ["wrap-ansi@6.2.0", "", { "dependencies": { "ansi-styles": "^4.0.0", "string-width": "^4.1.0", "strip-ansi": "^6.0.0" } }, ""],
 
     "constant-case/tslib": ["tslib@2.8.1", "", {}, ""],
@@ -2101,8 +2079,6 @@
 
     "dot-case/tslib": ["tslib@2.8.1", "", {}, ""],
 
-    "eciesjs/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, ""],
-
     "eciesjs/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
 
     "eciesjs/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, ""],
@@ -2110,8 +2086,6 @@
     "eslint-import-resolver-node/debug": ["debug@3.2.7", "", { "dependencies": { "ms": "^2.1.1" } }, ""],
 
     "eslint-import-resolver-node/resolve": ["resolve@2.0.0-next.7", "", { "dependencies": { "es-errors": "^1.3.0", "is-core-module": "^2.16.2", "node-exports-info": "^1.6.0", "object-keys": "^1.1.1", "path-parse": "^1.0.7", "supports-preserve-symlinks-flag": "^1.0.0" }, "bin": "bin/resolve" }, ""],
-
-    "eslint-import-resolver-typescript/debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, ""],
 
     "eslint-module-utils/debug": ["debug@3.2.7", "", { "dependencies": { "ms": "^2.1.1" } }, ""],
 
@@ -2195,10 +2169,6 @@
 
     "porto/zustand": ["zustand@5.0.14", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["immer"] }, "sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g=="],
 
-    "postcss-import/resolve": ["resolve@1.22.12", "", { "dependencies": { "es-errors": "^1.3.0", "is-core-module": "^2.16.1", "path-parse": "^1.0.7", "supports-preserve-symlinks-flag": "^1.0.0" }, "bin": "bin/resolve" }, ""],
-
-    "postcss-nested/postcss-selector-parser": ["postcss-selector-parser@6.1.4", "", { "dependencies": { "cssesc": "^3.0.0", "util-deprecate": "^1.0.2" } }, ""],
-
     "prop-types/react-is": ["react-is@16.13.1", "", {}, ""],
 
     "react-remove-scroll/tslib": ["tslib@2.8.1", "", {}, ""],
@@ -2218,10 +2188,6 @@
     "sentence-case/tslib": ["tslib@2.8.1", "", {}, ""],
 
     "snake-case/tslib": ["tslib@2.8.1", "", {}, ""],
-
-    "socket.io-client/debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, ""],
-
-    "socket.io-parser/debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, ""],
 
     "sponge-case/tslib": ["tslib@2.8.1", "", {}, ""],
 
@@ -2267,10 +2233,6 @@
 
     "wrap-ansi/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, ""],
 
-    "wrap-ansi-cjs/ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, ""],
-
-    "wrap-ansi-cjs/string-width": ["string-width@4.2.3", "", { "dependencies": { "emoji-regex": "^8.0.0", "is-fullwidth-code-point": "^3.0.0", "strip-ansi": "^6.0.1" } }, ""],
-
     "yargs/find-up": ["find-up@4.1.0", "", { "dependencies": { "locate-path": "^5.0.0", "path-exists": "^4.0.0" } }, ""],
 
     "@base-org/account/ox/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
@@ -2311,58 +2273,6 @@
 
     "@metamask/sdk/debug/ms": ["ms@2.1.2", "", {}, ""],
 
-    "@nivo/annotations/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/annotations/@react-spring/web/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/annotations/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/annotations/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/arcs/@react-spring/core/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/arcs/@react-spring/core/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/arcs/@react-spring/core/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/arcs/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/arcs/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/arcs/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/axes/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/axes/@react-spring/web/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/axes/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/axes/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/core/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/core/@react-spring/web/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/core/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/core/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/text/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/text/@react-spring/web/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/text/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/text/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
-    "@nivo/tooltip/@react-spring/web/@react-spring/animated": ["@react-spring/animated@10.1.1", "", { "dependencies": { "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug=="],
-
-    "@nivo/tooltip/@react-spring/web/@react-spring/core": ["@react-spring/core@10.1.1", "", { "dependencies": { "@react-spring/animated": "~10.1.1", "@react-spring/shared": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w=="],
-
-    "@nivo/tooltip/@react-spring/web/@react-spring/shared": ["@react-spring/shared@10.1.1", "", { "dependencies": { "@react-spring/rafz": "~10.1.1", "@react-spring/types": "~10.1.1" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ=="],
-
-    "@nivo/tooltip/@react-spring/web/@react-spring/types": ["@react-spring/types@10.1.1", "", {}, "sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA=="],
-
     "@typescript-eslint/typescript-estree/minimatch/brace-expansion": ["brace-expansion@5.0.6", "", { "dependencies": { "balanced-match": "^4.0.2" } }, ""],
 
     "@walletconnect/ethereum-provider/@reown/appkit/@reown/appkit-common": ["@reown/appkit-common@1.7.8", "", { "dependencies": { "big.js": "6.2.2", "dayjs": "1.11.13", "viem": ">=2.29.0" } }, ""],
@@ -2387,8 +2297,6 @@
 
     "@walletconnect/ethereum-provider/@reown/appkit/valtio": ["valtio@1.13.2", "", { "dependencies": { "derive-valtio": "0.1.0", "proxy-compare": "2.6.0", "use-sync-external-store": "1.2.0" }, "peerDependencies": { "@types/react": ">=16.8", "react": ">=16.8" } }, ""],
 
-    "@walletconnect/ethereum-provider/@walletconnect/keyvaluestorage/unstorage": ["unstorage@1.17.5", "", { "dependencies": { "anymatch": "^3.1.3", "chokidar": "^5.0.0", "destr": "^2.0.5", "h3": "^1.15.10", "lru-cache": "^11.2.7", "node-fetch-native": "^1.6.7", "ofetch": "^1.5.1", "ufo": "^1.6.3" }, "peerDependencies": { "@azure/app-configuration": "^1.8.0", "@azure/cosmos": "^4.2.0", "@azure/data-tables": "^13.3.0", "@azure/identity": "^4.6.0", "@azure/keyvault-secrets": "^4.9.0", "@azure/storage-blob": "^12.26.0", "@capacitor/preferences": "^6 || ^7 || ^8", "@deno/kv": ">=0.9.0", "@netlify/blobs": "^6.5.0 || ^7.0.0 || ^8.1.0 || ^9.0.0 || ^10.0.0", "@planetscale/database": "^1.19.0", "@upstash/redis": "^1.34.3", "@vercel/blob": ">=0.27.1", "@vercel/functions": "^2.2.12 || ^3.0.0", "@vercel/kv": "^1 || ^2 || ^3", "aws4fetch": "^1.0.20", "db0": ">=0.2.1", "idb-keyval": "^6.2.1", "ioredis": "^5.4.2", "uploadthing": "^7.4.4" }, "optionalPeers": ["@azure/app-configuration", "@azure/cosmos", "@azure/data-tables", "@azure/identity", "@azure/keyvault-secrets", "@azure/storage-blob", "@capacitor/preferences", "@deno/kv", "@netlify/blobs", "@planetscale/database", "@upstash/redis", "@vercel/blob", "@vercel/functions", "@vercel/kv", "aws4fetch", "db0", "ioredis", "uploadthing"] }, ""],
-
     "@walletconnect/ethereum-provider/@walletconnect/sign-client/@walletconnect/core": ["@walletconnect/core@2.21.1", "", { "dependencies": { "@walletconnect/heartbeat": "1.2.2", "@walletconnect/jsonrpc-provider": "1.0.14", "@walletconnect/jsonrpc-types": "1.0.4", "@walletconnect/jsonrpc-utils": "1.0.8", "@walletconnect/jsonrpc-ws-connection": "1.0.16", "@walletconnect/keyvaluestorage": "1.1.1", "@walletconnect/logger": "2.1.2", "@walletconnect/relay-api": "1.0.11", "@walletconnect/relay-auth": "1.1.0", "@walletconnect/safe-json": "1.0.2", "@walletconnect/time": "1.0.2", "@walletconnect/types": "2.21.1", "@walletconnect/utils": "2.21.1", "@walletconnect/window-getters": "1.0.1", "es-toolkit": "1.33.0", "events": "3.3.0", "uint8arrays": "3.1.0" } }, ""],
 
     "@walletconnect/ethereum-provider/@walletconnect/sign-client/@walletconnect/logger": ["@walletconnect/logger@2.1.2", "", { "dependencies": { "@walletconnect/safe-json": "^1.0.2", "pino": "7.11.0" } }, ""],
@@ -2409,23 +2317,11 @@
 
     "@walletconnect/ethereum-provider/@walletconnect/utils/viem": ["viem@2.23.2", "", { "dependencies": { "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "abitype": "1.0.8", "isows": "1.0.6", "ox": "0.6.7", "ws": "8.18.0" }, "peerDependencies": { "typescript": ">=5.0.4" } }, ""],
 
-    "@walletconnect/utils/ox/@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, ""],
-
     "@walletconnect/utils/ox/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
-
-    "@walletconnect/utils/ox/@scure/bip32": ["@scure/bip32@1.7.0", "", { "dependencies": { "@noble/curves": "~1.9.0", "@noble/hashes": "~1.8.0", "@scure/base": "~1.2.5" } }, ""],
-
-    "@walletconnect/utils/ox/@scure/bip39": ["@scure/bip39@1.6.0", "", { "dependencies": { "@noble/hashes": "~1.8.0", "@scure/base": "~1.2.5" } }, ""],
 
     "@walletconnect/utils/ox/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" } }, ""],
 
-    "cliui/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, ""],
-
-    "cliui/wrap-ansi/ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, ""],
-
     "d3-time-format/d3-time/d3-array": ["d3-array@2.12.1", "", { "dependencies": { "internmap": "^1.0.0" } }, ""],
-
-    "eslint-import-resolver-typescript/debug/ms": ["ms@2.1.3", "", {}, ""],
 
     "ethereum-cryptography/@scure/bip32/@scure/base": ["@scure/base@1.1.9", "", {}, ""],
 
@@ -2439,27 +2335,13 @@
 
     "obj-multiplex/readable-stream/string_decoder": ["string_decoder@1.1.1", "", { "dependencies": { "safe-buffer": "~5.1.0" } }, ""],
 
-    "porto/ox/@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, ""],
-
-    "porto/ox/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, ""],
-
     "porto/ox/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
 
     "porto/ox/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, ""],
 
-    "porto/ox/@scure/bip32": ["@scure/bip32@1.7.0", "", { "dependencies": { "@noble/curves": "~1.9.0", "@noble/hashes": "~1.8.0", "@scure/base": "~1.2.5" } }, ""],
-
-    "porto/ox/@scure/bip39": ["@scure/bip39@1.6.0", "", { "dependencies": { "@noble/hashes": "~1.8.0", "@scure/base": "~1.2.5" } }, ""],
-
     "porto/ox/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" } }, ""],
 
-    "socket.io-client/debug/ms": ["ms@2.1.3", "", {}, ""],
-
-    "socket.io-parser/debug/ms": ["ms@2.1.3", "", {}, ""],
-
     "unstorage/chokidar/readdirp": ["readdirp@5.0.0", "", {}, ""],
-
-    "wrap-ansi-cjs/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, ""],
 
     "wrap-ansi/strip-ansi/ansi-regex": ["ansi-regex@6.2.2", "", {}, ""],
 
@@ -2478,20 +2360,6 @@
     "@metamask/providers/@metamask/rpc-errors/@metamask/utils/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, ""],
 
     "@metamask/providers/@metamask/rpc-errors/@metamask/utils/uuid": ["uuid@9.0.1", "", { "bin": "dist/bin/uuid" }, ""],
-
-    "@nivo/annotations/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/arcs/@react-spring/core/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/arcs/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/axes/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/core/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/text/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
-
-    "@nivo/tooltip/@react-spring/web/@react-spring/shared/@react-spring/rafz": ["@react-spring/rafz@10.1.1", "", {}, "sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ=="],
 
     "@typescript-eslint/typescript-estree/minimatch/brace-expansion/balanced-match": ["balanced-match@4.0.4", "", {}, ""],
 
@@ -2515,10 +2383,6 @@
 
     "@walletconnect/ethereum-provider/@reown/appkit/valtio/use-sync-external-store": ["use-sync-external-store@1.2.0", "", { "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0" } }, ""],
 
-    "@walletconnect/ethereum-provider/@walletconnect/keyvaluestorage/unstorage/chokidar": ["chokidar@5.0.0", "", { "dependencies": { "readdirp": "^5.0.0" } }, ""],
-
-    "@walletconnect/ethereum-provider/@walletconnect/keyvaluestorage/unstorage/lru-cache": ["lru-cache@11.5.1", "", {}, ""],
-
     "@walletconnect/ethereum-provider/@walletconnect/sign-client/@walletconnect/core/es-toolkit": ["es-toolkit@1.33.0", "", {}, ""],
 
     "@walletconnect/ethereum-provider/@walletconnect/sign-client/@walletconnect/core/uint8arrays": ["uint8arrays@3.1.0", "", { "dependencies": { "multiformats": "^9.4.2" } }, ""],
@@ -2540,8 +2404,6 @@
     "@walletconnect/ethereum-provider/@walletconnect/utils/viem/ox": ["ox@0.6.7", "", { "dependencies": { "@adraffy/ens-normalize": "^1.10.1", "@noble/curves": "^1.6.0", "@noble/hashes": "^1.5.0", "@scure/bip32": "^1.5.0", "@scure/bip39": "^1.4.0", "abitype": "^1.0.6", "eventemitter3": "5.0.1" }, "peerDependencies": { "typescript": ">=5.4.0" } }, ""],
 
     "@walletconnect/ethereum-provider/@walletconnect/utils/viem/ws": ["ws@8.18.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" } }, ""],
-
-    "@walletconnect/utils/ox/@scure/bip32/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, ""],
 
     "d3-time-format/d3-time/d3-array/internmap": ["internmap@1.0.1", "", {}, ""],
 
@@ -2570,8 +2432,6 @@
     "@walletconnect/ethereum-provider/@reown/appkit/@walletconnect/universal-provider/@walletconnect/utils/uint8arrays": ["uint8arrays@3.1.0", "", { "dependencies": { "multiformats": "^9.4.2" } }, ""],
 
     "@walletconnect/ethereum-provider/@reown/appkit/@walletconnect/universal-provider/@walletconnect/utils/viem": ["viem@2.23.2", "", { "dependencies": { "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "abitype": "1.0.8", "isows": "1.0.6", "ox": "0.6.7", "ws": "8.18.0" }, "peerDependencies": { "typescript": ">=5.0.4" } }, ""],
-
-    "@walletconnect/ethereum-provider/@walletconnect/keyvaluestorage/unstorage/chokidar/readdirp": ["readdirp@5.0.0", "", {}, ""],
 
     "@walletconnect/ethereum-provider/@walletconnect/sign-client/@walletconnect/logger/pino/on-exit-leak-free": ["on-exit-leak-free@0.2.0", "", {}, ""],
 

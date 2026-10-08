@@ -2062,7 +2062,8 @@ export const getAnalytics = async (req: GlobalRequest, res: GlobalResponse) => {
     }).length;
 
     const activeUsersDaily = usersFound.filter(
-      (u: { updatedAt: NativeDate; status: string }) => {
+      (u: { updatedAt?: Date | null; status?: string }) => {
+        if (!u.updatedAt) return false;
         const last24Hours = now.getTime() - 24 * 60 * 60 * 1000;
 
         return u.updatedAt.getTime() >= last24Hours;
@@ -2070,7 +2071,8 @@ export const getAnalytics = async (req: GlobalRequest, res: GlobalResponse) => {
     ).length;
 
     const activeUsersWeekly = usersFound.filter(
-      (u: { updatedAt: NativeDate; status: string }) => {
+      (u: { updatedAt?: Date | null; status?: string }) => {
+        if (!u.updatedAt) return false;
         const last7Days = now.getTime() - 7 * 24 * 60 * 60 * 1000;
 
         return u.updatedAt.getTime() >= last7Days;
@@ -2078,7 +2080,8 @@ export const getAnalytics = async (req: GlobalRequest, res: GlobalResponse) => {
     ).length;
 
     const activeUsersMonthly = usersFound.filter(
-      (u: { updatedAt: Date; status: string }) => {
+      (u: { updatedAt?: Date | null; status?: string }) => {
+        if (!u.updatedAt) return false;
         const last30Days = now.getTime() - 30 * 24 * 60 * 60 * 1000;
 
         return u.updatedAt.getTime() >= last30Days;
