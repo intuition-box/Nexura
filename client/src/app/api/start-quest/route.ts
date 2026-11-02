@@ -1,4 +1,5 @@
 import { resilientFetch } from "@/lib/resilientFetch";
+import { forwardDevAccess } from "@/lib/devAccess";
 export async function POST(req: Request) {
   const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -8,6 +9,7 @@ export async function POST(req: Request) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...forwardDevAccess(req),
     },
     body: JSON.stringify(body),
   });

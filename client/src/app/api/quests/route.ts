@@ -1,5 +1,6 @@
 import { resilientFetch } from "@/lib/resilientFetch";
-export async function GET() {
+import { forwardDevAccess } from "@/lib/devAccess";
+export async function GET(req: Request) {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -9,6 +10,7 @@ export async function GET() {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        ...forwardDevAccess(req),
       },
     });
 

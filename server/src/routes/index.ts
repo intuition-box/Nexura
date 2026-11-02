@@ -8,6 +8,8 @@ import questRoutes from "./quest.routes.ts";
 import userRoutes from "./user.routes.ts";
 import appRoutes from "./app.routes.ts";
 import lessonRoutes from "./lesson.routes.ts";
+import devAccessRoutes from "./devAccess.routes.ts";
+import { devAccessGate } from "@/middlewares/devAccess.middleware";
 import {
 	fetchEcosystemDapps,
 	fetchMiniQuests,
@@ -24,6 +26,8 @@ import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, disco
 const router = Router();
 
 router
+	.use(devAccessGate)
+	.use("/dev-access", devAccessRoutes)
 	.get("/server-time", (_req, res) => {
 		res.json({ serverTime: Date.now() });
 	})

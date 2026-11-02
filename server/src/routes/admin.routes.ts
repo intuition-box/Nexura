@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { addDevAccess, listDevAccess, removeDevAccess } from "@/controllers/devAccess.controller";
+import { requireListHere } from "@/middlewares/devAccess.middleware";
 import {
   addAdmin,
   adminLogout,
@@ -159,6 +161,9 @@ router
   .get("/get-banned-users", getBannedUsers)
   .get("/get-xp-history", getXpHistory)
   .get("/get-admins", getAdmins)
+  .get("/dev-access", requireListHere, listDevAccess)
+  .post("/dev-access/add", requireListHere, addDevAccess)
+  .post("/dev-access/remove", requireListHere, removeDevAccess)
   .get("/get-admin-quests", attachAdminCampaignHub, getAdminHubQuests)
   .get("/get-quest-detail", attachAdminCampaignHub, getAdminQuestDetail)
   .get("/get-quests", attachAdminCampaignHub, getTasks)
