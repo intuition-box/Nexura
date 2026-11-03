@@ -12,6 +12,7 @@ import { announceMilestone } from "./announce";
 import { GuildMember } from "discord.js";
 import client from "../../client";
 import axios from "axios";
+import { OUTBOUND_TIMEOUT_MS, withRetry } from "./resilience";
 
 export const padNumber = (numberToBePadded: number) => {
 	return numberToBePadded.toString().padStart(3, "0");
@@ -331,6 +332,13 @@ const DISCORD_TASK_TAG_REQUIRES_ROLE = new Set([
  * don't surface as "this quest is missing a discord channel to verify".
  */
 export const validateDiscordTaskConfig = (task: Record<string, any>) => {
+	const link = String(task?.link ?? "").trim();
+	if (link && !/^https?:\/\//i.test(link)) {
+		if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[^:/]+:\d+/.test(link)) {
+			return { success: false as const, error: "task links must be web addresses (http:// or https://)" };
+		}
+		task.link = `https://${link}`;
+	}
 	const tag = String(task?.tag ?? "").trim().toLowerCase();
 	const category = String(task?.category ?? "").trim().toLowerCase();
 	const isDiscord =
@@ -396,7 +404,7 @@ export const validateEcosystemQuestData = (reqData: any) => {
 export const validateHubData = (reqData: any) => {
 	const hubSchema = z.object({
 		name: z.string().trim(),
-    description: z.string().trim().min(150).max(300),
+    description: z.string().trim().max(300),
 		website: z.string().trim().optional(),
 		xAccount: z.string().trim().optional(),
 		discordServer: z.string().trim().optional(),
@@ -430,10 +438,12 @@ export const generateOTP = () => {
 	return code;
 };
 
+export const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
 export const validateSuperAdminData = (reqData: any) => {
 	const hubSuperAdminSchema = z.object({
 		name: z.string().trim().min(3),
-		email: z.email().trim(),
+		email: z.string().trim().regex(EMAIL_RE),
     password: z.string().trim().min(8),
 	});
 
@@ -445,7 +455,7 @@ export const validateSuperAdminData = (reqData: any) => {
 export const validateHubAdminData = (reqData: any) => {
 	const hubAdminSchema = z.object({
 		name: z.string().trim().min(3),
-		email: z.email().trim(),
+		email: z.string().trim().regex(EMAIL_RE),
     password: z.string().trim().min(8),
 		code: z.string().trim().length(6),
 	});
@@ -458,7 +468,7 @@ export const validateHubAdminData = (reqData: any) => {
 export const validateUserSignUpData = (reqData: any) => {
 	const userSchema = z.object({
 		username: z.string().trim(),
-		email: z.email().trim().optional(),
+		email: z.string().trim().regex(EMAIL_RE).optional(),
 		// password: z.string().trim(),
 	});
 
@@ -510,17 +520,20 @@ export const getMissingFields = (error: z.ZodError<Record<any, unknown>>) => {
   return emptyFields;
 };
 
+export const hubSessionTtl = (remember: unknown): StringValue => (remember === true ? "7d" : "1d");
+
 export const JWT = {
   sign: (id: any, expiresInParam?: StringValue) => {
     const expiresIn = expiresInParam ?? "7d";
 		return jwt.sign({ id }, JWT_SECRET, { expiresIn });
 	},
 
+	/** Verifies a session token. Single-purpose tokens (e.g. password reset links) are refused here. */
 	verify: (jwtToken: string) => {
 		return new Promise((resolve, reject) => {
 			jwt.verify(jwtToken, JWT_SECRET, (error, decodedText) => {
 				if (error) reject(error.message);
-        else if (typeof decodedText === "object") {
+        else if (typeof decodedText === "object" && !(decodedText as any).purpose) {
 					resolve(decodedText);
 				} else {
 					reject("Invalid JWT payload");
@@ -528,6 +541,32 @@ export const JWT = {
 			});
 		});
 	},
+
+	/** Signs a token that only works for one purpose (never as a session). */
+	signFor: (id: any, purpose: string, expiresIn: StringValue) => jwt.sign({ id, purpose }, JWT_SECRET, { expiresIn }),
+
+	/** Verifies a single-purpose token; resolves its id and issue time (ms). */
+	verifyFor: (jwtToken: string, purpose: string) => {
+		return new Promise<{ id: string; issuedAt: number }>((resolve, reject) => {
+			jwt.verify(jwtToken, JWT_SECRET, (error, decoded) => {
+				if (error) reject(error.message);
+				else if (typeof decoded === "object" && (decoded as any).purpose === purpose && (decoded as any).id) {
+					resolve({ id: String((decoded as any).id), issuedAt: Number((decoded as any).iat ?? 0) * 1000 });
+				} else {
+					reject("Invalid JWT payload");
+				}
+			});
+		});
+	},
+};
+
+/** When a password changes, sessions issued before this moment stop working (whole seconds, like JWT iat). */
+export const passwordChangeMark = () => new Date(Math.floor(Date.now() / 1000) * 1000);
+
+/** True when a session token was issued before the account's last password change. */
+export const issuedBeforePasswordChange = (decoded: { iat?: number }, account: { passwordChangedAt?: Date | string | null }) => {
+	if (!account?.passwordChangedAt || !decoded?.iat) return false;
+	return decoded.iat * 1000 < new Date(account.passwordChangedAt).getTime();
 };
 
 export const getRefreshToken = (id: any) => {
@@ -562,18 +601,36 @@ export const checkPayment = async (userAddress: string) => {
 }
 
 export const getAmountPaid = async (txHash: string) => {
-	const provider = new ethers.JsonRpcProvider(chain.rpcUrls.default.http[0]);
+	// RPC reads get a time limit and are retried on brief failures
+	const request = new ethers.FetchRequest(chain.rpcUrls.default.http[0]!);
+	request.timeout = OUTBOUND_TIMEOUT_MS;
+	const provider = new ethers.JsonRpcProvider(request);
 
-	const tx = await provider.getTransaction(txHash);
+	const tx = await withRetry(() => provider.getTransaction(txHash), { label: "RPC getTransaction" });
 	if (!tx) {
 		throw new Error("Transaction not found");
   }
 
-  const block = await provider.getBlock(tx.blockNumber as number);
+  if (tx.blockNumber == null) {
+		throw new Error("Transaction is not confirmed yet");
+  }
 
-  const timestamp = new Date(Number(block!.timestamp) * 1000).toLocaleDateString("en-US", { timeZone: "Africa/Lagos" });
+  const [block, receipt] = await Promise.all([
+    withRetry(() => provider.getBlock(tx.blockNumber as number), { label: "RPC getBlock" }),
+    withRetry(() => provider.getTransactionReceipt(txHash), { label: "RPC getTransactionReceipt" }),
+  ]);
 
-	return { from: tx.from, value: formatEther(tx.value), timestamp };
+  const blockTime = Number(block!.timestamp) * 1000;
+  const timestamp = new Date(blockTime).toLocaleDateString("en-US", { timeZone: "Africa/Lagos" });
+
+	return {
+		from: tx.from,
+		to: tx.to ?? "",
+		value: formatEther(tx.value),
+		timestamp,
+		blockTime,
+		success: receipt?.status === 1,
+	};
 }
 
 export const validateCreateLesson = (reqData: any) => {
@@ -615,3 +672,14 @@ export const getNFT = async (walletAddress: string) => {
 
   return balance > 0n;
 }
+
+/**
+ * Why a submitted link or answer can't be stored, or null when it's fine. Submissions are shown to
+ * hub admins as links, so script links (javascript:, data:, vbscript:) are refused.
+ */
+export const submissionProblem = (value: unknown): string | null => {
+	if (typeof value !== "string" || !value.trim()) return "send your submission";
+	if (value.length > 5000) return "your submission is too long";
+	if (/^[\s\x00-\x1f]*(javascript|data|vbscript):/i.test(value)) return "that link isn't valid; use a normal web address";
+	return null;
+};

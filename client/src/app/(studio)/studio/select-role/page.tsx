@@ -12,7 +12,7 @@ export default function SelectRole() {
     console.log("[ACTION] SelectRole.handleContinue —", activeRole);
     if (!activeRole) return;
     if (activeRole === "project") {
-      router.push("/studio/projects/create");
+      router.push("/studio/sign-up");
     } else {
       router.push("/studio/users/create");
     }

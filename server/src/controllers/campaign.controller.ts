@@ -1,4 +1,5 @@
 import logger from "@/config/logger";
+import { recordHubActivity } from "@/utils/hubNotifications";
 import { campaign, campaignCompleted } from "@/models/campaign.model";
 import { hub } from "@/models/hub.model";
 import { referredUsers } from "@/models/referrer.model";
@@ -6,6 +7,7 @@ import { user } from "@/models/user.model";
 import { getCampaignContractStartDate, performIntuitionOnchainAction } from "@/utils/account";
 import { normalizeCampaignDateInput, normalizeCampaignDatesForResponse, parseDate } from "@/utils/dates";
 import { uploadImg } from "@/utils/img.utils";
+import { recoverStudioSignature, signatureScheme } from "@/utils/studioSignature";
 import {
 	OK,
 	INTERNAL_SERVER_ERROR,
@@ -15,11 +17,17 @@ import {
 	FORBIDDEN,
 	UNAUTHORIZED,
   NO_CONTENT,
+  CONFLICT,
 } from "@/utils/status.utils";
+import { spentPayment } from "@/models/spentPayment.model";
 import { validateCampaignData, updateLevel, checkPayment, validateDiscordTaskConfig } from "@/utils/utils";
 import { campaignQuest } from "@/models/quests.model";
 import { ethers } from "ethers";
 import { xpLog } from "@/models/xpLog.model";
+import { refreshUserRetention } from "@/utils/retention";
+import { COMPLETED_MARK, settleStageXp, syncCampaignXp } from "@/utils/campaignXp";
+import { checkTrustEligibility, creditReward } from "@/utils/campaignRewards";
+import { campaignRewardAsset, rewardAssetUnavailable } from "@/utils/rewardAssets";
 
 interface IReward {
 	xp: number;
@@ -302,6 +310,7 @@ export const createCampaign = async (
 
 		await newCampaign.save();
 		await createdHub.save();
+		await syncCampaignXp(newCampaign._id);
 
 		res.status(CREATED).json({ message: "campaign created!" });
 	} catch (error) {
@@ -338,6 +347,15 @@ export const addCampaignAddress = async (
 		if (!id) {
 			res.status(BAD_REQUEST).json({ error: "send campaign ID" });
 			return;
+		}
+		// A rewards contract can only be attached for an asset whose network has a live contract
+		{
+			const forCampaign = await campaign.findById(req.body?.id ?? req.query?.id).select("rewardAsset rewardsConfig").lean();
+			const unavailable = forCampaign ? rewardAssetUnavailable(campaignRewardAsset(forCampaign)) : null;
+			if (unavailable) {
+				res.status(FORBIDDEN).json({ error: unavailable });
+				return;
+			}
 		}
 		if (!contractAddress || !ethers.isAddress(contractAddress)) {
 			res.status(BAD_REQUEST).json({ error: "send a valid campaign contract address" });
@@ -432,27 +450,22 @@ export const joinCampaign = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
-		const maxParticipants = Number((campaignToJoin as any).maxParticipants ?? 0);
-		if (maxParticipants > 0 && campaignToJoin.participants >= maxParticipants) {
-			res.status(FORBIDDEN).json({ error: "campaign participant limit reached" });
-			return;
-		}
+		// Anyone can join and earn XP: the campaign's maximum only limits TRUST reward places
+		// (first come, first served at claim time), never who can take part
 
-		const completedCampaign = await campaignCompleted.findOne({
-			user: userId,
-			campaign: id,
-		});
-		if (!completedCampaign) {
-			const joined = new campaignCompleted({ user: userId, campaign: id });
-
-			campaignToJoin.participants += 1;
-
+		const joinResult = await campaignCompleted.updateOne(
+			{ user: userId, campaign: id },
+			{ $setOnInsert: { user: userId, campaign: id } },
+			{ upsert: true }
+		);
+		if (joinResult.upsertedCount) {
 			if (
 				campaignToJoin.trustClaimed < campaignToJoin.totalTrustAvailable &&
 				campaignToJoin.contractAddress
 			) {
 				const onchainStartDate = await getCampaignContractStartDate(campaignToJoin.contractAddress);
 				if (Number.isFinite(onchainStartDate) && onchainStartDate * 1000 > now.getTime()) {
+					await campaignCompleted.deleteOne({ _id: joinResult.upsertedId });
 					res.status(FORBIDDEN).json({
 						error: "Rewards start later on-chain. An admin must update or redeploy the contract.",
 					});
@@ -466,8 +479,7 @@ export const joinCampaign = async (req: GlobalRequest, res: GlobalResponse) => {
 				});
 			}
 
-			await campaignToJoin.save();
-			await joined.save();
+			await campaign.updateOne({ _id: campaignToJoin._id }, { $inc: { participants: 1 } });
 
 			res.status(OK).json({ message: "campaign joined" });
 			return;
@@ -502,6 +514,11 @@ export const updateCampaign = async (
 		}
 		if (String(existingCampaign.hub) !== String(req.admin.hub)) {
 			res.status(FORBIDDEN).json({ error: "you are not allowed to update this campaign" });
+			return;
+		}
+		// A published campaign only changes through an approved "editCampaign" proposal in Admin Management
+		if (existingCampaign.status !== "Save" && !req.isPlatformAdmin) {
+			res.status(FORBIDDEN).json({ error: "this campaign is published, so changes need an approved proposal in Admin Management" });
 			return;
 		}
 
@@ -601,7 +618,9 @@ export const updateCampaign = async (
 
 		}
 
-		const updated = await campaign.findByIdAndUpdate(id, campaignUpdateData, { new: true });
+		await campaign.findByIdAndUpdate(id, campaignUpdateData);
+		await syncCampaignXp(id);
+		const updated = await campaign.findById(id);
 
 		// Recalculate status when dates change on a live/scheduled campaign
 		if (updated && (updated.status === "Active" || updated.status === "Scheduled")) {
@@ -656,6 +675,14 @@ export const closeCampaign = async (
 
 		if (foundCampaign.status === "Ended") {
 			res.status(FORBIDDEN).json({ error: "campaign has already ended" });
+			return;
+		}
+
+		// Projects can't end a running campaign on the spot: they propose it, and once signers
+		// approve it ends 7 days later (see the "endCampaign" governance action).
+		const endsAt = parseDate(foundCampaign.ends_at);
+		if (!req.isPlatformAdmin && endsAt && endsAt.getTime() > Date.now()) {
+			res.status(FORBIDDEN).json({ error: "a running campaign can't be ended immediately; propose ending it instead" });
 			return;
 		}
 
@@ -811,6 +838,12 @@ export const reopenCampaign = async (
 	}
 };
 
+/**
+ * "Claim" on a campaign. Anyone who joined can claim: it pays the XP they've earned so far (stage by
+ * stage), records the campaign as completed once every task is done, and pays the TRUST reward only
+ * when they're eligible (see utils/campaignRewards.ts). The answer says what was paid and, when the
+ * TRUST reward wasn't, why, so the app can tell them.
+ */
 export const claimCampaignRewards = async (
 	req: GlobalRequest,
 	res: GlobalResponse
@@ -818,82 +851,82 @@ export const claimCampaignRewards = async (
 	try {
 		const campaignId = req.query.id as string;
 
-		const userToReward = await user.findById(req.id);
-		if (!userToReward) {
-			res
-				.status(NOT_FOUND)
-				.json({ error: "id associated with user is invalid" });
+		if (!(await user.exists({ _id: req.id }))) {
+			res.status(NOT_FOUND).json({ error: "id associated with user is invalid" });
 			return;
 		}
 
 		const campaignToClaimRewards = await campaign.findById(campaignId);
 		if (!campaignToClaimRewards) {
-			res
-				.status(NOT_FOUND)
-				.json({ error: "id associated with campaign is invalid" });
+			res.status(NOT_FOUND).json({ error: "id associated with campaign is invalid" });
 			return;
 		}
 
-		const completedCampaign = await campaignCompleted.findOne({
-			campaign: campaignId,
-			user: req.id
-		});
-
-		if (!completedCampaign?.questsCompleted) {
-			res.status(FORBIDDEN).json({
-				error: "all quests must be completed before rewards can be claimed",
-			});
+		const join = await campaignCompleted.findOne({ campaign: campaignId, user: req.id });
+		if (!join) {
+			res.status(FORBIDDEN).json({ error: "join the campaign before claiming rewards" });
 			return;
 		}
 
-		if (completedCampaign.campaignCompleted) {
-			res.status(FORBIDDEN).json({ error: "campaign reward has been claimed" });
+		// 1. XP for every stage completed so far (each stage pays once). If that didn't finish cleanly,
+		// stop here: recording the completion now could cost them XP still owed
+		const { paid: xpAwarded, ok: xpSettled } = await settleStageXp(req.id, campaignToClaimRewards._id);
+		if (!xpSettled) {
+			res.status(INTERNAL_SERVER_ERROR).json({ error: "your XP couldn't be added just now, try claiming again in a moment" });
 			return;
 		}
 
-		if (userToReward.status !== "Active") {
-			userToReward.status = "Active";
-
-			const userReferred = await referredUsers.findOne({ newUser: userToReward._id });
-			if (userReferred && userReferred.status !== "Active") {
-				userReferred.status = "Active";
-	
-				await userReferred.save();
+		// 2. Completion, counted once, when every task is done
+		if (join.questsCompleted) {
+			const completedNow = await campaignCompleted.findOneAndUpdate(
+				{ _id: join._id, campaignCompleted: { $ne: true } },
+				// The mark keeps this from ever looking like a one-lump claim from before stage payouts
+				{ $set: { campaignCompleted: true }, $addToSet: { xpStagesPaid: COMPLETED_MARK } },
+			);
+			if (completedNow) {
+				await user.updateOne({ _id: req.id }, { $inc: { campaignsCompleted: 1 }, $set: { status: "Active" } });
+				const userReferred = await referredUsers.findOne({ newUser: req.id });
+				if (userReferred && userReferred.status !== "Active") {
+					userReferred.status = "Active";
+					await userReferred.save();
+				}
 			}
 		}
 
-		const xp = campaignToClaimRewards.reward?.xp as number;
-		const trustTokens = campaignToClaimRewards.reward?.trustTokens ?? 0;
-
-		if (campaignToClaimRewards.trustClaimed < campaignToClaimRewards.totalTrustAvailable) {
-			userToReward.trustEarned += trustTokens;
-			campaignToClaimRewards.trustClaimed += trustTokens;
+		// 3. TRUST, only when eligible; the reward and the place are each taken once
+		const trust = await checkTrustEligibility(req.id, campaignToClaimRewards._id);
+		let trustAwarded = 0;
+		const trustTokens = Number(campaignToClaimRewards.reward?.trustTokens ?? 0);
+		if (trust.eligible && trustTokens > 0) {
+			const won = await campaignCompleted.findOneAndUpdate(
+				{ _id: join._id, trustRewardClaimed: { $ne: true } },
+				{ $set: { trustRewardClaimed: true } },
+			);
+			if (won) {
+				// Only if the whole reward still fits in the pool (no over-paying the last place)
+				const placeTaken = await campaign.findOneAndUpdate(
+					{ _id: campaignToClaimRewards._id, $expr: { $lte: [{ $add: [{ $ifNull: ["$trustClaimed", 0] }, trustTokens] }, "$totalTrustAvailable"] } },
+					{ $inc: { trustClaimed: trustTokens } },
+				);
+				if (placeTaken) {
+					// Recorded in the campaign's asset (TRUST, USDC, …)
+					await creditReward(req.id, campaignToClaimRewards, trustTokens);
+					trustAwarded = trustTokens;
+				} else {
+					await campaignCompleted.updateOne({ _id: join._id }, { $set: { trustRewardClaimed: false } });
+					trust.eligible = false;
+					trust.reason = `All the ${trust.token} reward places for this campaign have been taken.`;
+				}
+			}
 		}
 
-		userToReward.xp += xp;
-		userToReward.campaignsCompleted += 1;
+		await refreshUserRetention(req.id);
 
-		campaignToClaimRewards.xpClaimed += xp;
-
-		completedCampaign.campaignCompleted = true;
-
-		const level = await updateLevel(userToReward);
-		
-		userToReward.level = level;
-
-		await xpLog.create({
-      address: userToReward.address,
-			username: userToReward.username,
-			amount: xp,
-			status: "success",
-			type: "campaign"
-    });
-
-		await completedCampaign.save();
-		await campaignToClaimRewards.save();
-		await userToReward.save();
-
-		res.status(OK).json({ message: "campaign completed" });
+		res.status(OK).json({
+			message: xpAwarded || trustAwarded ? "rewards claimed" : "nothing new to claim yet",
+			xpAwarded,
+			trust: { ...trust, awarded: trustAwarded, claimed: trust.claimed || trustAwarded > 0 },
+		});
 	} catch (error) {
 		logger.error(error);
 		res
@@ -985,12 +1018,40 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 		if (campaignExists.status !== "Save") {
 			return res.status(BAD_REQUEST).json({ error: "campaign is not in save status" });
 		}
+
+		// Publishing is confirmed with the admin's wallet signature
+		const adminId = String(req.admin._id);
+		let signerAddress: string;
+		try {
+			signerAddress = recoverStudioSignature(req.body ?? {}, { action: "Publish", targetId: String(campaignExists._id), adminId });
+		} catch (err: any) {
+			return res.status(BAD_REQUEST).json({ error: err?.message || "a wallet signature is required to publish" });
+		}
+		(campaignExists as any).publishSignature = {
+			address: signerAddress,
+			signature: req.body.signature,
+			scheme: signatureScheme(req.body.scheme),
+			message: req.body.message,
+			adminId,
+			signedAt: new Date(String(req.body.message.signedAt)),
+		};
+
+		// The cover must actually be stored, not just shown in the builder
+		if (!campaignExists.projectCoverImage || campaignExists.projectCoverImage === "pending") {
+			return res.status(BAD_REQUEST).json({ error: "add a cover image before publishing; it wasn't saved yet" });
+		}
+
 		const rewardPool = Number(campaignExists.reward?.pool ?? 0);
 		const maxParticipants = Number((campaignExists as any).maxParticipants ?? 0);
 		if (rewardPool > 0 && maxParticipants <= 0) {
 			return res.status(BAD_REQUEST).json({
 				error: "set a participant limit before publishing a reward campaign",
 			});
+		}
+		// Rewards only in an asset whose rewards contract is live (only TRUST on Intuition for now)
+		if (rewardPool > 0) {
+			const unavailable = rewardAssetUnavailable(campaignRewardAsset(campaignExists));
+			if (unavailable) return res.status(FORBIDDEN).json({ error: unavailable });
 		}
 		if (rewardPool > 0 && !campaignExists.contractAddress) {
 			return res.status(FORBIDDEN).json({
@@ -1041,17 +1102,49 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 		}
 
 		const startsAt = parseDate(campaignExists.starts_at);
-		campaignExists.status = startsAt && startsAt > new Date() ? "Scheduled" : "Active";
-		createdHub.campaignsCreated += 1;
-		(createdHub as any).pendingTxHash = null;
+		const publishedStatus = startsAt && startsAt > new Date() ? "Scheduled" : "Active";
 
+		// A transaction that already paid for a launch (here or in another hub) can't pay again
+		const paidHash = (createdHub as any).pendingTxHash ?? null;
+		const realPayment = typeof paidHash === "string" && /^0x[0-9a-fA-F]{64}$/.test(paidHash);
+		if (realPayment && await spentPayment.exists({ txHash: paidHash.toLowerCase() })) {
+			await hub.updateOne({ _id: createdHub._id, pendingTxHash: paidHash }, { $set: { pendingTxHash: null } });
+			return res.status(CONFLICT).json({ error: "this payment was already used for another launch; pay the launch fee again" });
+		}
+
+		// Publish once: only one request can move the draft out of "Save" (double clicks, retries)
+		const locked = await campaign.findOneAndUpdate(
+			{ _id: campaignExists._id, status: "Save" },
+			{ $set: { status: publishedStatus } },
+		);
+		if (!locked) {
+			return res.status(CONFLICT).json({ error: "this campaign is already being published" });
+		}
+
+		// Spend the launch fee once: one payment can't publish two campaigns at the same time
+		const spent = await hub.findOneAndUpdate(
+			{ _id: createdHub._id, pendingTxHash: paidHash },
+			{ $set: { pendingTxHash: null }, $inc: { campaignsCreated: 1 } },
+		);
+		if (!spent) {
+			await campaign.updateOne({ _id: campaignExists._id }, { $set: { status: "Save" } });
+			return res.status(CONFLICT).json({ error: "this launch fee was already used to publish another campaign; pay the fee again to publish this one" });
+		}
+
+		if (realPayment) {
+			await spentPayment.create({ txHash: paidHash.toLowerCase(), hub: createdHub._id, campaign: campaignExists._id })
+				.catch(err => logger.warn(`publishCampaign: payment ${paidHash} already recorded: ${err?.message}`));
+		}
+
+		campaignExists.status = publishedStatus;
 		await campaignExists.save();
-		await createdHub.save();
+		await syncCampaignXp(campaignExists._id);
+		void recordHubActivity(req, "campaign", [{ field: "campaign", to: String(campaignExists.title ?? ""), from: publishedStatus }]);
 
 		res.status(OK).json({ message: "campaign published" });
 	} catch (error: any) {
 		logger.error(error);
-		res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "error publishing campaign" });
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error publishing campaign" });
 	}
 };
 

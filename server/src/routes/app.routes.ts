@@ -1,3 +1,4 @@
+import { blockLockedCampaignStage } from "@/middlewares/campaignStageLock";
 import { authenticateUser, authenticateUser2 } from "@/middlewares/auth.middleware";
 // import { rateLimiter } from "@/middlewares/ratelimiter";
 import { Router } from "express";
@@ -33,8 +34,9 @@ router
   .post("/search-for-claim", authenticateUser2, searchTriple)
   .get("/get-triple", authenticateUser2, getTriple)
   .get("/get-analytics", getAnalytics)
-  .post("/check-x", authenticateUser, checkXTask)
-  .post("/check-discord", authenticateUser, checkDiscordTask)
+  // Campaign tasks in a stage that hasn't opened yet for this person are refused (see campaignStageLock)
+  .post("/check-x", authenticateUser, blockLockedCampaignStage(), checkXTask)
+  .post("/check-discord", authenticateUser, blockLockedCampaignStage(), checkDiscordTask)
   .get("/save-cv", authenticateUser, saveCv)
   .get("/referral-leaderboard", referralLeaderboard)
   .get("/auth/discord/callback", discordCallback)

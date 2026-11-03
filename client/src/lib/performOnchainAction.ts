@@ -7,6 +7,7 @@ import { createPublicClient, http, parseAbi, type Address, parseEther, formatEth
 import { getIntuitionNetworkParams } from "./utils";
 import { buildUrl } from "./queryClient";
 import { toUserFriendlyError } from "./errorMessages";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 const STUDIO_FEE_ABI = [
   "function payFee() external payable",
@@ -62,7 +63,7 @@ const normalizeUnixTimestamp = (value: number, fieldName: string): number => {
 };
 
 const getStudioPaymentConfig = async (): Promise<StudioPaymentConfig> => {
-  const response = await fetch(buildUrl("/api/studio-payment-config"));
+  const response = await resilientFetch(buildUrl("/api/studio-payment-config"));
 
   if (!response.ok) {
     const json = await response.json().catch(() => null);

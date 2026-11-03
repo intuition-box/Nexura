@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Zap, Users, LogOut, BookOpen } from "lucide-react";
+import { Zap, Users, BookOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { getStoredUserSession } from "@/lib/userSession";
@@ -11,10 +11,9 @@ type TabType = "questsTab" | "questSubmissions" | "lessonsTab";
 interface UserSidebarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  onLogout?: () => void;
 }
 
-export default function UserSidebar({ activeTab, setActiveTab, onLogout }: UserSidebarProps) {
+export default function UserSidebar({ activeTab, setActiveTab }: UserSidebarProps) {
   const router = useRouter();
   const [userAvatar, setUserAvatar] = useState("/default-avatar.png");
   const [username, setUsername] = useState("@user");
@@ -118,16 +117,6 @@ export default function UserSidebar({ activeTab, setActiveTab, onLogout }: UserS
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="p-4 border-t border-white/10">
-          <button
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-400 hover:bg-red-400/10 transition-all duration-200"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Logout</span>
-          </button>
-        </div>
       </div>
 
       {/* ── Mobile top bar ── */}
@@ -173,13 +162,6 @@ export default function UserSidebar({ activeTab, setActiveTab, onLogout }: UserS
             <span>{item.title}</span>
           </button>
         ))}
-        <button
-          onClick={onLogout}
-          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-[10px] font-medium text-red-400/50"
-        >
-          <LogOut className="w-5 h-5" />
-          <span>Logout</span>
-        </button>
       </nav>
     </>
   );

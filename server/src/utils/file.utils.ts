@@ -11,6 +11,22 @@ interface UploadFileParams {
   folder: string;
 }
 
+export class FileTypeError extends Error {
+  constructor() { super("upload a PDF, PNG, JPG or WEBP file"); }
+}
+
+const DOCUMENT_TYPES = [
+  { mime: "application/pdf", ext: "pdf", magic: [0x25, 0x50, 0x44, 0x46] },
+  { mime: "image/png", ext: "png", magic: [0x89, 0x50, 0x4e, 0x47] },
+  { mime: "image/jpeg", ext: "jpg", magic: [0xff, 0xd8, 0xff] },
+  { mime: "image/webp", ext: "webp", magic: [0x52, 0x49, 0x46, 0x46], at8: [0x57, 0x45, 0x42, 0x50] },
+];
+
+const startsWith = (buf: Buffer, bytes: number[], offset = 0) => bytes.every((b, i) => buf[offset + i] === b);
+
+export const detectDocumentType = (file: Buffer) =>
+  DOCUMENT_TYPES.find(t => startsWith(file, t.magic) && (!t.at8 || startsWith(file, t.at8, 8))) ?? null;
+
 export const uploadFile = async ({
   file,
   filename,
@@ -22,8 +38,11 @@ export const uploadFile = async ({
     return `https://placehold.co/256x256/7c3aed/ffffff?text=${encodeURIComponent(folder)}`;
   }
 
+  const type = detectDocumentType(file);
+  if (!type) throw new FileTypeError();
+
   try {
-    const safeName = (filename ?? "file").replace(/[^a-zA-Z0-9._-]/g, "_");
+    const safeName = (filename ?? "file").replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.[^.]*$/, "") + "." + type.ext;
     const key = `${folder}/${uuid()}-${safeName}`;
 
     await getS3Client().send(
@@ -31,7 +50,8 @@ export const uploadFile = async ({
         ACL: "public-read",
         Body: file,
         Bucket: AWS_S3_BUCKET,
-        ContentType: contentType || "application/octet-stream",
+        ContentType: type.mime,
+        ContentDisposition: `attachment; filename="${safeName}"`,
         Key: key,
       })
     );

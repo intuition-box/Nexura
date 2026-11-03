@@ -22,6 +22,9 @@ async function generateCodeChallenge(verifier: string) {
 }
 
 
+/** Set before sending a Studio admin to X, so the callback links the hub and returns to Studio. */
+export const STUDIO_X_RETURN_KEY = "nexura:studio-x-return";
+
 export const getAuthUrl = async () => {
 
 	const state: string = cryptoRandomString({ length: 22 });

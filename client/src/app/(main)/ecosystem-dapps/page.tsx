@@ -22,6 +22,7 @@ interface Dapp {
   reward: string;
   isCompleted?: boolean;
   done: boolean;
+  reviewStatus?: "started" | "pending" | "retry" | "approved" | "done" | null;
   timer?: string;
   websiteUrl: string;
 }
@@ -36,14 +37,33 @@ export default function EcosystemDapps() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [dapps, setDapps] = useState<Dapp[]>([]);
   const [proofModalDapp, setProofModalDapp] = useState<Dapp | null>(null);
+  const [proofLinks, setProofLinks] = useState<Record<string, string>>({});
+  const [sendingProof, setSendingProof] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const { ecosystemQuests } = await apiRequestV2("GET", "/api/ecosystem-quests");
+  const loadDapps = async () => {
+    const { ecosystemQuests } = await apiRequestV2("GET", "/api/ecosystem-quests");
+    setDapps(ecosystemQuests);
+  };
 
-      setDapps(ecosystemQuests);
-    })();
-  }, []);
+  useEffect(() => { void loadDapps(); }, []);
+
+  const sendProof = async (dapp: Dapp) => {
+    const submissionLink = (proofLinks[dapp._id] ?? "").trim();
+    if (!submissionLink) {
+      toast({ title: "Add your proof", description: "Paste a link that shows you used this dapp.", variant: "destructive" });
+      return;
+    }
+    setSendingProof(dapp._id);
+    try {
+      await apiRequestV2("POST", "/api/quest/submit-ecosystem-quest", { id: dapp._id, submissionLink });
+      toast({ title: "Proof sent", description: "The Nexura team will review it. You can claim once it's approved." });
+      await loadDapps();
+    } catch (error: any) {
+      toast({ title: "Couldn't send proof", description: error.message, variant: "destructive" });
+    } finally {
+      setSendingProof(null);
+    }
+  };
 
 
   const categories = ["All", ...Array.from(new Set(dapps.map(d => d.category)))];
@@ -280,21 +300,46 @@ export default function EcosystemDapps() {
                       Explore
                     </a>
 
-                    <Button
-                      size="sm"
-                      className={`
-                        w-full
-                        bg-gradient-to-r from-purple-700 via-purple-800 to-indigo-900
-                        text-white
-                        hover:from-purple-600 hover:via-purple-700 hover:to-indigo-800
-                        active:scale-[0.98]
-                        transition-all
-                      `}
-                      disabled={dapp.done || !visitedDapps.includes(dapp._id) || claimedDapps.includes(dapp._id)}
-                      onClick={(e) => { e.stopPropagation(); handleClaim(dapp); }}
-                    >
-                      {(dapp.done || claimedDapps.includes(dapp._id)) ? "Claimed" : `Claim ${dapp.reward} XP`}
-                    </Button>
+                    {!dapp.done && !claimedDapps.includes(dapp._id) && (dapp.reviewStatus == null || dapp.reviewStatus === "started" || dapp.reviewStatus === "retry") ? (
+                      <div className="flex flex-col gap-2">
+                        {dapp.reviewStatus === "retry" && (
+                          <p className="text-xs text-red-400">Your proof wasn't accepted. Send a new one.</p>
+                        )}
+                        <input
+                          type="url"
+                          placeholder="Link to your proof (e.g. transaction or post)"
+                          value={proofLinks[dapp._id] ?? ""}
+                          onChange={(e) => setProofLinks(prev => ({ ...prev, [dapp._id]: e.target.value }))}
+                          className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40"
+                        />
+                        <Button
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-purple-700 via-purple-800 to-indigo-900 text-white hover:from-purple-600 hover:via-purple-700 hover:to-indigo-800"
+                          disabled={!visitedDapps.includes(dapp._id) || sendingProof === dapp._id}
+                          onClick={(e) => { e.stopPropagation(); void sendProof(dapp); }}
+                        >
+                          {sendingProof === dapp._id ? "Sending…" : "Send proof for review"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className={`
+                          w-full
+                          bg-gradient-to-r from-purple-700 via-purple-800 to-indigo-900
+                          text-white
+                          hover:from-purple-600 hover:via-purple-700 hover:to-indigo-800
+                          active:scale-[0.98]
+                          transition-all
+                        `}
+                        disabled={dapp.done || dapp.reviewStatus !== "approved" || claimedDapps.includes(dapp._id)}
+                        onClick={(e) => { e.stopPropagation(); handleClaim(dapp); }}
+                      >
+                        {(dapp.done || claimedDapps.includes(dapp._id))
+                          ? "Claimed"
+                          : dapp.reviewStatus === "pending" ? "In review" : `Claim ${dapp.reward} XP`}
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

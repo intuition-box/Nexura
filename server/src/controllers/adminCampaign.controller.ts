@@ -142,6 +142,6 @@ export const publishAdminCampaign = async (req: GlobalRequest, res: GlobalRespon
     res.status(OK).json({ message: "campaign published" });
   } catch (error: any) {
     logger.error(error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "error publishing campaign" });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error publishing campaign" });
   }
 };

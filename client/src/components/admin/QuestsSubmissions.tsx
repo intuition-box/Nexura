@@ -1,4 +1,5 @@
 "use client";
+import StudioLoader from "@/components/studio/StudioLoader";
 
 import { useState } from "react";
 import { Card } from "../ui/card";
@@ -93,22 +94,22 @@ const completedTasks = tasks.filter(task =>
 
     // Helper function to render individual task cards
     const renderTaskCard = (submission: TASKSS) => (
-      <Card key={submission._id} className="bg-white/5 border-white p-4">
+      <Card key={submission._id} className="bg-[#f4f1fc] border-[rgba(28,37,51,0.12)] p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-white/50">User</p>
-            <p className="text-white font-medium cursor-pointer hover:text-white/80 flex items-center gap-2" onClick={() => toggleUserSelection(submission.user)}>
+            <p className="text-xs uppercase tracking-wide text-[#69728a]">User</p>
+            <p className="text-[#1c2533] font-medium cursor-pointer hover:text-[#3d485c] flex items-center gap-2" onClick={() => toggleUserSelection(submission.user)}>
               {submission.username}
-              {selectedUsers.has(submission.user) && <Check className="w-4 h-4 text-green-400" />}
+              {selectedUsers.has(submission.user) && <Check className="w-4 h-4 text-[#00a87c]" />}
             </p>
           </div>
           <Badge
             variant="outline"
             className={
-              submission.status === "pending" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
-                submission.status === "done" ? "bg-green-500/20 text-green-400 border-green-500/30" :
-                  submission.status === "retry" ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                    "bg-gray-500/20 text-gray-400 border-gray-500/30"
+              submission.status === "pending" ? "bg-yellow-500/20 text-[#c27c00] border-yellow-500/30" :
+                submission.status === "done" ? "bg-green-500/20 text-[#00a87c] border-green-500/30" :
+                  submission.status === "retry" ? "bg-red-500/20 text-[#e4545b] border-red-500/30" :
+                    "bg-gray-500/20 text-[#69728a] border-gray-500/30"
             }
           >
             {submission.status}
@@ -116,19 +117,19 @@ const completedTasks = tasks.filter(task =>
         </div>
         <div className="mt-3 space-y-2 text-sm">
           <div className="flex items-start justify-between gap-3">
-            <span className="text-white/60">Task</span>
-            <span className="text-white text-right">{submission.taskType}</span>
+            <span className="text-[#69728a]">Task</span>
+            <span className="text-[#1c2533] text-right">{submission.taskType}</span>
           </div>
           {submission.taskType?.toLowerCase() === "feedback" && (
-            <div className="mt-2 bg-white/5 border border-white/10 rounded-lg p-3 max-h-24 overflow-y-auto">
-              <p className="text-white/80 text-xs whitespace-pre-wrap leading-relaxed">
+            <div className="mt-2 bg-[#f4f1fc] border border-[rgba(28,37,51,0.12)] rounded-lg p-3 max-h-24 overflow-y-auto">
+              <p className="text-[#3d485c] text-xs whitespace-pre-wrap leading-relaxed">
                 {submission.submissionLink.length > 150 ? submission.submissionLink.slice(0, 150) + "…" : submission.submissionLink}
               </p>
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-white/60">Validated By</span>
-            <span className="text-white">{submission.validatedBy}</span>
+            <span className="text-[#69728a]">Validated By</span>
+            <span className="text-[#1c2533]">{submission.validatedBy}</span>
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-2">
@@ -147,7 +148,7 @@ const completedTasks = tasks.filter(task =>
                   <Button
                     size="sm"
                     onClick={() => handleAction(submission._id, "accept")}
-                    className="bg-green-500/20 text-green-400 hover:bg-green-500/30 hover:text-green-300 border border-green-500/50 rounded-full p-2"
+                    className="bg-green-500/20 text-[#00a87c] hover:bg-green-500/30 hover:text-[#00a87c] border border-green-500/50 rounded-full p-2"
                     title="Accept"
                   >
                     <Check className="w-4 h-4" />
@@ -155,7 +156,7 @@ const completedTasks = tasks.filter(task =>
                   <Button
                     size="sm"
                     onClick={() => handleAction(submission._id, "reject")}
-                    className="bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 border border-red-500/50 rounded-full p-2"
+                    className="bg-red-500/20 text-[#e4545b] hover:bg-red-500/30 hover:text-[#e4545b] border border-red-500/50 rounded-full p-2"
                     title="Reject"
                   >
                     <X className="w-4 h-4" />
@@ -163,7 +164,7 @@ const completedTasks = tasks.filter(task =>
                   <Button
                     size="sm"
                     onClick={() => handleView(submission._id, submission.taskType, submission.submissionLink)}
-                    className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 border border-blue-500/50 rounded-full p-2"
+                    className="bg-blue-500/20 text-[#2f7fe0] hover:bg-blue-500/30 hover:text-[#2f7fe0] border border-blue-500/50 rounded-full p-2"
                     title="Review"
                   >
                     <RefreshCw className="w-4 h-4" />
@@ -175,7 +176,7 @@ const completedTasks = tasks.filter(task =>
             <Button
               size="sm"
               onClick={() => handleView(submission._id, submission.taskType, submission.submissionLink)}
-              className="w-full bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-300 border border-orange-500/50 rounded-full"
+              className="w-full bg-orange-500/20 text-[#c27c00] hover:bg-orange-500/30 hover:text-[#c27c00] border border-orange-500/50 rounded-full"
               title="Review & Change Status"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -188,28 +189,28 @@ const completedTasks = tasks.filter(task =>
 
     // Helper function to render table rows
     const renderTaskRow = (submission: TASKSS) => (
-  <TableRow key={submission._id} className="border-white/10">
+  <TableRow key={submission._id} className="border-[rgba(28,37,51,0.12)]">
     
     {/* User */}
-    <TableCell className="text-white/80">
+    <TableCell className="text-[#3d485c]">
       <button
-        className="flex items-center gap-2 hover:text-white cursor-pointer"
+        className="flex items-center gap-2 hover:text-[#1c2533] cursor-pointer"
         onClick={() => toggleUserSelection(submission.user)}
       >
         {submission.username}
         {selectedUsers.has(submission.user) && (
-          <Check className="w-4 h-4 text-green-400" />
+          <Check className="w-4 h-4 text-[#00a87c]" />
         )}
       </button>
     </TableCell>
 
     {/* Task Type */}
-    <TableCell className="font-medium text-white">
+    <TableCell className="font-medium text-[#1c2533]">
       {submission.taskType}
     </TableCell>
 
     {/* Submitted */}
-    <TableCell className="text-white/80">
+    <TableCell className="text-[#3d485c]">
   {timeAgo(submission.createdAt ?? new Date().toISOString())}
 </TableCell>
 
@@ -219,12 +220,12 @@ const completedTasks = tasks.filter(task =>
         variant="outline"
         className={
           submission.status === "pending"
-            ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+            ? "bg-yellow-500/20 text-[#c27c00] border-yellow-500/30"
             : submission.status === "done"
-            ? "bg-green-500/20 text-green-400 border-green-500/30"
+            ? "bg-green-500/20 text-[#00a87c] border-green-500/30"
             : submission.status === "retry"
-            ? "bg-red-500/20 text-red-400 border-red-500/30"
-            : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+            ? "bg-red-500/20 text-[#e4545b] border-red-500/30"
+            : "bg-gray-500/20 text-[#69728a] border-gray-500/30"
         }
       >
         {submission.status}
@@ -232,7 +233,7 @@ const completedTasks = tasks.filter(task =>
     </TableCell>
 
     {/* Validated By */}
-    <TableCell className="text-white/80">
+    <TableCell className="text-[#3d485c]">
       {submission.validatedBy}
     </TableCell>
 
@@ -260,14 +261,14 @@ const completedTasks = tasks.filter(task =>
               <Button
                 size="sm"
                 onClick={() => handleAction(submission._id, "accept")}
-                className="bg-green-500/20 text-green-400 border border-green-500/50 rounded-full p-2"
+                className="bg-green-500/20 text-[#00a87c] border border-green-500/50 rounded-full p-2"
               >
                 <Check className="w-4 h-4" />
               </Button>
               <Button
                 size="sm"
                 onClick={() => handleAction(submission._id, "reject")}
-                className="bg-red-500/20 text-red-400 border border-red-500/50 rounded-full p-2"
+                className="bg-red-500/20 text-[#e4545b] border border-red-500/50 rounded-full p-2"
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -284,7 +285,7 @@ const completedTasks = tasks.filter(task =>
               submission.submissionLink
             )
           }
-          className="bg-orange-500/20 text-orange-400 border border-orange-500/50 rounded-full px-4"
+          className="bg-orange-500/20 text-[#c27c00] border border-orange-500/50 rounded-full px-4"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Review
@@ -299,21 +300,21 @@ const completedTasks = tasks.filter(task =>
       <div className="space-y-4">
         <StatOverview tasks={tasks} />
         <div className="flex flex-wrap items-center justify-between gap-y-3 mb-6">
-          <h2 className="text-2xl font-bold text-white">Quests Submissions</h2>
+          <h2 className="text-2xl font-bold text-[#1c2533]">Quests Submissions</h2>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#69728a]" />
               <Input
                 placeholder="Search users..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-white/5 border-white/10 text-white pl-9 placeholder:text-white/30 focus-visible:ring-[#8a3ffc] w-full sm:w-48"
+                className="bg-[#f4f1fc] border-[rgba(28,37,51,0.12)] text-[#1c2533] pl-9 placeholder:text-[#98a0b4] focus-visible:ring-[#8a3ffc] w-full sm:w-48"
               />
             </div>
             <Button
               size="icon"
               variant="ghost"
-              className="text-white/70 hover:text-white hover:bg-white/10"
+              className="text-[#3d485c] hover:text-[#1c2533] hover:bg-[rgba(138,63,252,0.06)]"
               onClick={onRefresh}
               disabled={loading}
             >
@@ -325,18 +326,16 @@ const completedTasks = tasks.filter(task =>
         {/* Pending Tasks Section */}
         <Collapsible open={questPendingOpen} onOpenChange={setQuestPendingOpen}>
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between text-white hover:bg-white/5 p-4">
+            <Button variant="ghost" className="w-full justify-between text-[#1c2533] hover:bg-[rgba(138,63,252,0.06)] p-4">
               <span className="text-lg font-semibold">Pending Tasks ({pendingTasks.length})</span>
               <ChevronDown className={cn("w-5 h-5 transition-transform", questPendingOpen && "rotate-180")} />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-3">
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="w-6 h-6 animate-spin text-white/50" />
-              </div>
+              <StudioLoader compact message="Loading submissions…" />
             ) : pendingTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-white/50">
+              <div className="flex flex-col items-center justify-center py-8 text-[#69728a]">
                 <Clock className="w-12 h-12 mb-4 opacity-50" />
                 <p>No pending tasks</p>
               </div>
@@ -345,17 +344,17 @@ const completedTasks = tasks.filter(task =>
                 <div className="space-y-3 md:hidden">
                   {pendingTasks.map(renderTaskCard)}
                 </div>
-                <Card className="bg-transparent border-white/10 overflow-hidden hidden md:block">
+                <Card className="bg-transparent border-[rgba(28,37,51,0.12)] overflow-hidden hidden md:block">
 
                   <Table>
 <TableHeader>
-  <TableRow className="border-white/10">
-    <TableHead className="text-white/70">USER</TableHead>
-    <TableHead className="text-white/70">TASK TYPE</TableHead>
-    <TableHead className="text-white/70">SUBMITTED</TableHead>
-    <TableHead className="text-white/70">STATUS</TableHead>
-    <TableHead className="text-white/70">VALIDATED BY</TableHead>
-    <TableHead className="text-white/70 text-right">ACTIONS</TableHead>
+  <TableRow className="border-[rgba(28,37,51,0.12)]">
+    <TableHead className="text-[#3d485c]">USER</TableHead>
+    <TableHead className="text-[#3d485c]">TASK TYPE</TableHead>
+    <TableHead className="text-[#3d485c]">SUBMITTED</TableHead>
+    <TableHead className="text-[#3d485c]">STATUS</TableHead>
+    <TableHead className="text-[#3d485c]">VALIDATED BY</TableHead>
+    <TableHead className="text-[#3d485c] text-right">ACTIONS</TableHead>
   </TableRow>
 </TableHeader>
 
@@ -372,14 +371,14 @@ const completedTasks = tasks.filter(task =>
         {/* Completed Tasks Section */}
         <Collapsible open={questCompletedOpen} onOpenChange={setQuestCompletedOpen}>
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between text-white hover:bg-white/5 p-4">
+            <Button variant="ghost" className="w-full justify-between text-[#1c2533] hover:bg-[rgba(138,63,252,0.06)] p-4">
               <span className="text-lg font-semibold">Completed Tasks ({completedTasks.length})</span>
               <ChevronDown className={cn("w-5 h-5 transition-transform", questCompletedOpen && "rotate-180")} />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-3">
             {completedTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-white/50">
+              <div className="flex flex-col items-center justify-center py-8 text-[#69728a]">
                 <CheckCircle2 className="w-12 h-12 mb-4 opacity-50" />
                 <p>No completed tasks yet</p>
               </div>
@@ -388,16 +387,16 @@ const completedTasks = tasks.filter(task =>
                 <div className="space-y-3 md:hidden">
                   {completedTasks.map(renderTaskCard)}
                 </div>
-                <Card className="bg-transparent border-white/10 overflow-hidden hidden md:block">
+                <Card className="bg-transparent border-[rgba(28,37,51,0.12)] overflow-hidden hidden md:block">
                   <Table>
                     <TableHeader>
-  <TableRow className="border-white/10">
-    <TableHead className="text-white/70">USER</TableHead>
-    <TableHead className="text-white/70">TASK TYPE</TableHead>
-    <TableHead className="text-white/70">SUBMITTED</TableHead>
-    <TableHead className="text-white/70">STATUS</TableHead>
-    <TableHead className="text-white/70">VALIDATED BY</TableHead>
-    <TableHead className="text-white/70 text-right">ACTIONS</TableHead>
+  <TableRow className="border-[rgba(28,37,51,0.12)]">
+    <TableHead className="text-[#3d485c]">USER</TableHead>
+    <TableHead className="text-[#3d485c]">TASK TYPE</TableHead>
+    <TableHead className="text-[#3d485c]">SUBMITTED</TableHead>
+    <TableHead className="text-[#3d485c]">STATUS</TableHead>
+    <TableHead className="text-[#3d485c]">VALIDATED BY</TableHead>
+    <TableHead className="text-[#3d485c] text-right">ACTIONS</TableHead>
   </TableRow>
 </TableHeader>
                     <TableBody>

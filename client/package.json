@@ -104,5 +104,9 @@
       "version": "^1.3.14",
       "onFail": "warn"
     }
+  },
+  "allowScripts": {
+    "utf-8-validate@5.0.10": true,
+    "unrs-resolver@1.12.2": true
   }
 }

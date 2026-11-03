@@ -4,6 +4,9 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { emitSessionChange } from "../lib/session";
 import { buildUrl, apiRequestV2 } from "../lib/queryClient";
 import { useToast } from "./use-toast";
+import { resilientFetch } from "@/lib/resilientFetch";
+import { clearWalletTokens, saveWalletToken } from "@/components/studio/studioWalletProof";
+import { requestLegalConsent, storedConsent } from "@/lib/legal";
 
 const STORAGE_KEY = "nexura:wallet";
 
@@ -82,10 +85,13 @@ export function useWallet() {
         }
       } else {
         const referrer = localStorage.getItem("ref");
-        const data = await apiRequestV2("POST", "/api/user/sign-in", { address: addr, referrer });
+        // The server checks this signature to confirm the wallet is really theirs
+        const data = await apiRequestV2("POST", "/api/user/sign-in", { address: addr, referrer, message, signature, consent: storedConsent() });
         if (data.user) {
           localStorage.setItem("user_profile", JSON.stringify(data.user));
           localStorage.setItem("nexura:token", data.accessToken);
+          // The same wallet login counts in Nexura Studio too
+          if (data.walletToken) saveWalletToken(addr, data.walletToken);
           emitSessionChange();
         } else {
           toast({ title: "Error", description: "Error signing in.", variant: "destructive" });
@@ -106,6 +112,9 @@ export function useWallet() {
     async (opts?: { noReload?: boolean; purpose?: string }): Promise<string | null> => {
       _pendingPurpose = opts?.purpose;
 
+      if (isConnected && localStorage.getItem("nexura:token")) return address ?? null;
+      if (!(await requestLegalConsent())) return null;
+
       if (!isConnected) {
         // If the user isn't connected to Wagmi, always let them open the modal.
         // We previously blocked this if they had a token, but that trapped them if their wallet disconnected.
@@ -114,10 +123,6 @@ export function useWallet() {
         return null;
       }
 
-      // Already connected — check if backend auth is needed
-      const hasToken = localStorage.getItem("nexura:token");
-      if (hasToken) return address ?? null;
-
       await doBackendAuth(address!, opts?.purpose);
       return address ?? null;
     },
@@ -125,10 +130,11 @@ export function useWallet() {
   );
 
   const disconnect = useCallback(async () => {
-    try { await fetch(buildUrl("/api/user/logout"), { method: "POST" }); } catch {}
+    try { await resilientFetch(buildUrl("/api/user/logout"), { method: "POST" }); } catch {}
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem("nexura:token");
     localStorage.removeItem("user_profile");
+    clearWalletTokens();
     emitSessionChange();
     try { wagmiDisconnect(); } catch {}
     window.location.reload();

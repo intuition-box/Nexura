@@ -90,7 +90,7 @@ export default function SharedAccessCredentials() {
       const msg: string = error?.message || "Failed to sign up.";
       if (msg.toLowerCase().includes("already exists")) {
         toast({ title: "Account already exists", description: "Redirecting you to sign in.", variant: "destructive" });
-        setTimeout(() => router.push("/projects/create/signin-to-hub"), 1500);
+        setTimeout(() => router.push("/studio/sign-in"), 1500);
       } else {
         toast({ title: "Error", description: msg, variant: "destructive" });
       }

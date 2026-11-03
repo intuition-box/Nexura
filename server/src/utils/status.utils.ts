@@ -17,3 +17,5 @@ export const TOO_MANY_ATTEMPTS = httpStatus.TOO_MANY_REQUESTS;
 export const FORBIDDEN = httpStatus.FORBIDDEN;
 
 export const NO_CONTENT = httpStatus.NO_CONTENT;
+
+export const CONFLICT = httpStatus.CONFLICT;

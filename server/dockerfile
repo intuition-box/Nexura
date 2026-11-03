@@ -6,6 +6,8 @@ COPY package*.json ./
 
 RUN bun install
 
-COPY . .
+COPY --chown=bun:bun . .
+
+USER bun
 
 CMD ["bun", "server.ts"]

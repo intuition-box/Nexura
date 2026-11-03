@@ -1,0 +1,23 @@
+{
+  "dependencies": {
+    "@0xintuition/graphql": "^2.0.2",
+    "@0xintuition/sdk": "^2.0.2",
+    "@nivo/core": "^0.99.0",
+    "@nivo/pie": "^0.99.0",
+    "next": "^16.2.10"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "typecheck": "npm run typecheck:client && npm run typecheck:server",
+    "typecheck:client": "npm --prefix client run typecheck",
+    "typecheck:server": "npm --prefix server run typecheck"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^9.39.3",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "typescript": "^5.9.3"
+  }
+}

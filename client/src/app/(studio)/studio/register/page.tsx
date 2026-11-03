@@ -19,7 +19,9 @@ export default function AdminSignUp() {
   }, []);
   const [email, setEmail] = useState(emailFromUrl);
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
+  // Invite links shared by hand carry the access code too
+  const [code, setCode] = useState(() =>
+    typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("code") ?? "").slice(0, 6) : "");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -203,7 +205,7 @@ export default function AdminSignUp() {
 
         <p className="mt-4 text-center text-xs text-white/30">
           Already have access?{" "}
-          <Link href="/projects/create/signin-to-hub" className="text-purple-400 hover:underline">
+          <Link href="/studio/sign-in" className="text-purple-400 hover:underline">
             Sign in
           </Link>
         </p>

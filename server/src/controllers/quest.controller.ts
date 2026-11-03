@@ -10,7 +10,6 @@ import {
 import { user } from "@/models/user.model";
 import { submission } from "@/models/submission.model";
 import { referredUsers } from "@/models/referrer.model";
-import { performIntuitionOnchainAction } from "@/utils/account";
 import {
 	INTERNAL_SERVER_ERROR,
 	OK,
@@ -29,7 +28,8 @@ import {
   validateQuestData,
   getMissingFields,
   validateSaveQuestData,
-  startOfDayUTC
+  startOfDayUTC,
+	submissionProblem,
 } from "@/utils/utils";
 import mongoose from "mongoose";
 import { hub, userHub } from "@/models/hub.model";
@@ -38,6 +38,10 @@ import { parseDate, normalizeCampaignDateInput } from "@/utils/dates";
 import { xpLog } from "@/models/xpLog.model";
 import { consumePaymentHash } from "./studioPayment.controller";
 import { environment } from "@/utils/env.utils";
+import { refreshUserRetention } from "@/utils/retention";
+import { payCompletedStageXp } from "@/utils/campaignXp";
+import { checkTrustEligibility } from "@/utils/campaignRewards";
+import { campaignRewardAsset } from "@/utils/rewardAssets";
 import { resolveAdminCampaignHub } from "@/utils/adminCampaignHub";
 
 // Image fields may hold empty strings or the literal "pending" (draft
@@ -62,7 +66,12 @@ const DISCORD_CAMPAIGN_TAGS = new Set([
 	"send-message-discord",
 ]);
 
+// The only campaign tasks with nothing to verify: they complete when the person says so
+const SELF_COMPLETE_CAMPAIGN_TAGS = new Set(["visit-website"]);
+
+// Custom tasks ("other") have no automatic check, so they go to the hub for review like these
 const PROOF_REQUIRED_CAMPAIGN_TAGS = new Set([
+	"other",
 	"comment",
 	"comment-x",
 	"follow",
@@ -132,6 +141,7 @@ export const fetchEcosystemDapps = async (req: GlobalRequest, res: GlobalRespons
 			const mergedEcoQuest: Record<any, unknown> = ecoQuest;
 
 			mergedEcoQuest.done = ecoQuestCompleted ? ecoQuestCompleted.done : false;
+			mergedEcoQuest.reviewStatus = ecoQuestCompleted?.done ? "done" : (ecoQuestCompleted?.status ?? null);
 
 			mergedEcosystemQuests.push(mergedEcoQuest);
 		}
@@ -494,23 +504,30 @@ export const fetchCampaignQuests = async (req: GlobalRequest, res: GlobalRespons
 
 		const campaignQuestsMarkedAsDone = campaignQuestsCompleted.filter((c_q: { done: boolean }) => c_q.done === true);
 
+		// Finishing every task no longer releases the TRUST reward on its own: that waits for
+		// eligibility (Nexura score + open stages done, see utils/campaignRewards.ts)
 		if (currentCampaign.noOfQuests === campaignQuestsMarkedAsDone.length && completedCampaign && !completedCampaign.questsCompleted) {
-			if (currentCampaign.trustClaimed < currentCampaign.totalTrustAvailable && currentCampaign.contractAddress) {
-				await performIntuitionOnchainAction({
-					action: "allow-claim",
-					userId,
-					contractAddress: currentCampaign.contractAddress,
-				});
-			}
-
 			completedCampaign.questsCompleted = true;
 			await completedCampaign.save();
+		}
+		// Keep stored retention in step with the tasks this person has completed, and pay any stage
+		// that has unlocked since they finished it
+		// Only for a signed-in person: without one, the lookups above match everyone's records
+		if (userId && completedCampaign && campaignQuestsMarkedAsDone.length > 0) {
+			void refreshUserRetention(userId);
+			void payCompletedStageXp(userId, id);
 		}
 
 		const campaignNumber = padNumber(currentCampaign.campaignNumber);
 
+		// The person's own progress towards the TRUST reward (also grants it the moment they qualify)
+		const rewardEligibility = completedCampaign && userId ? await checkTrustEligibility(userId, id) : null;
+
 		res.status(OK).json({
 			message: "quests fetched!",
+			rewardEligibility,
+			// What the reward pool pays in (TRUST, USDC, …), so the app can name it
+			rewardAsset: campaignRewardAsset(currentCampaign),
 			campaignQuests,
 			campaignCompleted: completedCampaign,
 			hub: currentCampaign.hub,
@@ -682,6 +699,13 @@ export const performCampaignQuest = async (req: GlobalRequest, res: GlobalRespon
 				return;
 			}
 
+			// Only tasks that can't be checked at all complete on request. Everything else must pass its
+			// check first (X, on-chain, TNS, relic), which records the result this step relies on
+			if (!SELF_COMPLETE_CAMPAIGN_TAGS.has(normalizedTag)) {
+				res.status(FORBIDDEN).json({ error: "this task has to be verified before it can be completed" });
+				return;
+			}
+
 			// Auto-create completion record for tasks that skip the submit step
 			// (e.g. X follow/comment where verification is deferred)
 			campaignDone = await campaignQuestCompleted.create({
@@ -692,11 +716,17 @@ export const performCampaignQuest = async (req: GlobalRequest, res: GlobalRespon
 				status: "done",
 			});
 			res.status(OK).json({ message: "quest done" });
+			// Pays the stage XP if this task finished a stage
+			void payCompletedStageXp(req.id, normalizedCampaignId || undefined);
 			return;
 		}
 
-		if (campaignDone.status !== "pending" && campaignDone.status !== "approved") {
-			res.status(BAD_REQUEST).json({ error: "quest needs to be marked as pending before it can be claimed" });
+		// "approved" means its check passed. A "pending" proof is still waiting for the hub's review, and
+		// the hub's approval completes it, so the person can't complete it themselves
+		if (campaignDone.status !== "approved") {
+			res.status(BAD_REQUEST).json({ error: campaignDone.status === "pending"
+				? "your submission is waiting for the project to review it"
+				: "this task has to be verified before it can be completed" });
 			return;
 		}
 
@@ -711,6 +741,8 @@ export const performCampaignQuest = async (req: GlobalRequest, res: GlobalRespon
 		await campaignDone.save();
 
 		res.status(OK).json({ message: "quest done" });
+		// Pays the stage XP if this task finished a stage
+		void payCompletedStageXp(req.id, normalizedCampaignId || undefined);
 
 		// if (!campaignDone) {
 		// 	res.status(FORBIDDEN).json({ message: "submit campaign task to proceed" });
@@ -926,30 +958,26 @@ export const claimEcosystemQuest = async (req: GlobalRequest, res: GlobalRespons
 			return;
 		}
 
-		let ecosystemQuestToClaim = await ecosystemQuestCompleted.findOne({
-			user: userId,
-			ecosystemQuest: id,
-		});
+		const ecosystemQuestToClaim = await ecosystemQuestCompleted.findOneAndUpdate(
+			{ user: userId, ecosystemQuest: id, status: "approved", done: { $ne: true } },
+			{ $set: { done: true, status: "done" } },
+			{ new: true }
+		);
 
-		if (ecosystemQuestToClaim?.done) {
-			res
-				.status(FORBIDDEN)
-				.json({ error: "ecosystem quest has been completed" });
+		if (!ecosystemQuestToClaim) {
+			const existing = await ecosystemQuestCompleted.findOne({ user: userId, ecosystemQuest: id }).lean();
+			const error = existing?.done
+				? "ecosystem quest has been completed"
+				: existing?.status === "pending"
+					? "your proof is still being reviewed"
+					: existing?.status === "retry"
+						? "your proof was not accepted, send a new one"
+						: "send proof first, the reward can be claimed once it is approved";
+			res.status(FORBIDDEN).json({ error });
 			return;
 		}
 
-		if (!ecosystemQuestToClaim) {
-			ecosystemQuestToClaim = await ecosystemQuestCompleted.create({
-				done: false,
-				timer: new Date(),
-				ecosystemQuest: id,
-				user: userId,
-			});
-		}
-
 		ecosystemQuestUser.xp += ecosystemQuestFound.reward;
-
-		ecosystemQuestToClaim.done = true;
 
 		const level = await updateLevel(ecosystemQuestUser);
 
@@ -963,7 +991,6 @@ export const claimEcosystemQuest = async (req: GlobalRequest, res: GlobalRespons
 			type: "ecosystem-quest"
     });
 
-		await ecosystemQuestToClaim.save();
 		await ecosystemQuestUser.save();
 
 		res.status(OK).json({ message: "ecosystem quest claimed" });
@@ -972,6 +999,83 @@ export const claimEcosystemQuest = async (req: GlobalRequest, res: GlobalRespons
 		res
 			.status(INTERNAL_SERVER_ERROR)
 			.json({ error: "error claiming ecosystem quest" });
+	}
+};
+
+export const submitEcosystemQuest = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const id = (req.query.id as string) || (req.body.id as string);
+		const { submissionLink } = req.body;
+		if (!id || !mongoose.Types.ObjectId.isValid(String(id)) || !submissionLink) {
+			res.status(BAD_REQUEST).json({ error: "send the dapp id and a proof link" });
+			return;
+		}
+		const linkProblem = submissionProblem(submissionLink);
+		if (linkProblem) {
+			res.status(BAD_REQUEST).json({ error: linkProblem });
+			return;
+		}
+
+		const userExists = await user.findById(req.id).lean();
+		if (!userExists) {
+			res.status(NOT_FOUND).json({ error: "id is invalid or does not exists" });
+			return;
+		}
+
+		if (environment === "production" && !userExists.socialProfiles?.x?.connected) {
+			res.status(BAD_REQUEST).json({ error: "user x profile not linked" });
+			return;
+		}
+
+		const dapp = await ecosystemQuest.findOne({ _id: id, status: "active" }).lean();
+		if (!dapp) {
+			res.status(NOT_FOUND).json({ error: "ecosystem dapp not found" });
+			return;
+		}
+
+		const nexuraHub = await resolveAdminCampaignHub();
+
+		let record = await ecosystemQuestCompleted.findOne({ user: req.id, ecosystemQuest: id });
+		if (record?.done || record?.status === "done") {
+			res.status(FORBIDDEN).json({ error: "ecosystem quest has been completed" });
+			return;
+		}
+		if (record?.status === "pending" || record?.status === "approved") {
+			res.status(BAD_REQUEST).json({ error: "proof already sent" });
+			return;
+		}
+
+		if (!record) {
+			record = await ecosystemQuestCompleted.create({ done: false, timer: new Date(), ecosystemQuest: id, user: req.id, status: "pending" });
+		} else {
+			record.status = "pending";
+			await record.save();
+		}
+
+		const existingSubmission = await submission.findOne({ miniQuestId: String(id), user: req.id, page: "ecosystem" });
+		if (existingSubmission) {
+			existingSubmission.submissionLink = submissionLink;
+			existingSubmission.status = "pending";
+			existingSubmission.questCompleted = String(record._id);
+			await existingSubmission.save();
+		} else {
+			await submission.create({
+				submissionLink,
+				hub: nexuraHub._id.toString(),
+				taskType: "ecosystem",
+				address: userExists.address,
+				username: userExists.socialProfiles?.x?.username || userExists.username,
+				miniQuestId: String(id),
+				user: req.id,
+				page: "ecosystem",
+				questCompleted: String(record._id),
+			});
+		}
+
+		res.status(OK).json({ message: "proof sent for review" });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error sending proof" });
 	}
 };
 
@@ -1030,6 +1134,11 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 			res.status(BAD_REQUEST).json({ error: "send required details" });
 			return;
 		}
+		const linkProblem = submissionProblem(submissionLink);
+		if (linkProblem) {
+			res.status(BAD_REQUEST).json({ error: linkProblem });
+			return;
+		}
 
 		const userExists = await user.findById(userId).lean();
 		if (!userExists) {
@@ -1037,6 +1146,7 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
     }
 
+    // Every proof submission needs a linked X account, on purpose: it makes fake accounts costlier
     if (environment === "production") {
   		if (!userExists.socialProfiles?.x?.connected) {
   			res.status(BAD_REQUEST).json({ error: "user x profile not linked" });
@@ -1054,7 +1164,7 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 
 		let notComplete;
 
-		const submissionExists = await submission.findOne({ miniQuestId: id, user: userId, page, hub: hubId });
+		const submissionExists = await submission.findOne({ miniQuestId: id, user: userId, page });
 
 		if (submissionExists) {
 			// Allow resubmission only if admin rejected (status = "retry")
@@ -1117,19 +1227,22 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 				return;
 			}
 
-			// Resolve the hub from the parent campaign so submissions always land in the creator's dashboard
-			if (questExists.campaign) {
-				const parentCampaign = await campaign.findById(questExists.campaign).select("hub").lean();
-				if (!resolvedHub) resolvedHub = parentCampaign?.hub?.toString() || hubId;
+			const parentCampaign = questExists.campaign
+				? await campaign.findById(questExists.campaign).select("hub").lean()
+				: null;
+			if (!parentCampaign) {
+				res.status(BAD_REQUEST).json({ error: "campaign quest id is invalid" });
+				return;
 			}
+			resolvedHub = parentCampaign.hub?.toString();
 
-			// Fall back to the admin-campaign system hub if no hub is resolved
+			// Fall back to the admin-campaign system hub if the campaign has no hub
 			if (!resolvedHub) {
 				const adminCampaignHub = await resolveAdminCampaignHub();
 				resolvedHub = adminCampaignHub._id.toString();
 			}
 
-			notComplete = await campaignQuestCompleted.create({ campaign: questId, campaignQuest: id, user: userId });
+			notComplete = await campaignQuestCompleted.create({ campaign: parentCampaign._id, campaignQuest: id, user: userId });
 		}
 
 		await submission.create({ submissionLink, hub: resolvedHub ?? "nexura-hub", taskType: tag, address: userExists.address, username: userExists.socialProfiles?.x?.username || userExists.username, miniQuestId: id, user: userId, page, questCompleted: notComplete._id, category: questCategory });
@@ -1137,7 +1250,7 @@ export const submitQuest = async (req: GlobalRequest, res: GlobalResponse) => {
 		res.status(OK).json({ message: "quest submitted" });
 	} catch (error: any) {
 		logger.error(error);
-		res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "error submitting quest" });
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "error submitting quest" });
 	}
 };
 
@@ -1349,12 +1462,11 @@ export const saveQuestWithMiniQuests = async (req: GlobalRequest, res: GlobalRes
       const questData = { ...qd };
 
       if (qd.quest && qd._id) {
-        if (questData.quest) {
-          questData.quest = new mongoose.Types.ObjectId(questData.quest);
-        }
+        // Only tasks of this quest can be updated, and they can't be moved to another quest
+        questData.quest = new mongoose.Types.ObjectId(questId);
         createdMiniQuests.push({
           updateOne: {
-            filter: { _id: new mongoose.Types.ObjectId(qd._id) },
+            filter: { _id: new mongoose.Types.ObjectId(qd._id), quest: new mongoose.Types.ObjectId(questId) },
             update: {
               $set: {
                 ...questData,
@@ -1647,7 +1759,7 @@ export const saveQuest = async (req: GlobalRequest, res: GlobalResponse) => {
     res.status(OK).json({ questId: id });
   } catch (error: any) {
     logger.error(error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "error saving quest" });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error saving quest" });
   }
 }
 
@@ -1778,7 +1890,7 @@ export const saveSingleQuest = async (req: GlobalRequest, res: GlobalResponse) =
     res.status(OK).json({ questId: id });
   } catch (error: any) {
     logger.error(error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "error saving single quest" });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error saving single quest" });
   }
 };
 
@@ -1839,7 +1951,7 @@ export const publishSingleQuest = async (req: GlobalRequest, res: GlobalResponse
     res.status(OK).json({ message: "Quest published successfully!" });
   } catch (error: any) {
     logger.error("Error publishing single quest: " + error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "Error publishing quest" });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "Error publishing quest" });
   }
 };
 

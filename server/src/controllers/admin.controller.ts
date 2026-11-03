@@ -7,19 +7,22 @@ import { lesson, lessonCompleted, miniLesson, question, questionCompleted, video
 import { admin } from "@/models/admin.model";
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, NOT_FOUND, NO_CONTENT, OK, UNAUTHORIZED, FORBIDDEN } from "@/utils/status.utils";
 import { campaign as campaignModel, campaignCompleted, campaign } from "@/models/campaign.model";
-import { generateOTP, getRefreshToken, hashPassword, JWT, startOfDayUTC, updateLevel, validateQuestData } from "@/utils/utils";
+import { EMAIL_RE, generateOTP, getRefreshToken, hashPassword, hubSessionTtl, JWT, passwordChangeMark, startOfDayUTC, updateLevel, validateQuestData } from "@/utils/utils";
 import { sendAdminResetEmail, sendEmailToAdmin } from "@/utils/sendMail";
-import { campaignQuestCompleted, miniQuestCompleted, questCompleted } from "@/models/questsCompleted.models";
+import { campaignQuestCompleted, ecosystemQuestCompleted, miniQuestCompleted, questCompleted } from "@/models/questsCompleted.models";
 import { submission } from "@/models/submission.model";
 import { user } from "@/models/user.model";
 import { hub, hubAdmin, userHub, userHubAdmin } from "@/models/hub.model";
 import { bannedUser } from "@/models/bannedUser.model";
 import { ecosystemQuest } from "@/models/quests.model";
 import { REDIS } from "@/utils/redis.utils";
+import { revokeToken } from "@/models/revokedToken.model";
 import { uploadImg } from "@/utils/img.utils";
 import { xpLog } from "@/models/xpLog.model";
 import { ADMIN_CAMPAIGN_SYSTEM_KEY } from "@/utils/adminCampaignHub";
 import { withSubmissionCategory } from "@/controllers/quest.controller";
+import { walletFromToken } from "@/utils/walletToken";
+import { ADMIN_TWO_FACTOR_PURPOSE } from "@/controllers/platformAccount.controller";
 
 const MAX_ADMIN_LEADERBOARD_LIMIT = 500;
 const DEFAULT_ADMIN_LEADERBOARD_LIMIT = 500;
@@ -37,7 +40,7 @@ const normalizeAdminRole = (role: unknown): "superadmin" | "admin" =>
 	role === "superadmin" ? "superadmin" : "admin";
 
 const buildAdminInviteCode = () => generateOTP();
-const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const isValidEmail = (value: string) => EMAIL_RE.test(value);
 
 const formatAdminRecord = (record: {
 	_id: unknown;
@@ -47,6 +50,7 @@ const formatAdminRecord = (record: {
 	createdAt?: Date;
 	lastActivity?: Date | null;
 	isOnline?: boolean;
+	linkedWallet?: string | null;
 }) => ({
 	_id: record._id,
 	name: record.username?.trim() || record.email.split("@")[0],
@@ -56,6 +60,7 @@ const formatAdminRecord = (record: {
 	createdAt: record.createdAt,
 	lastActivity: record.lastActivity ?? null,
 	isOnline: Boolean(record.isOnline),
+	linkedWallet: record.linkedWallet ?? null,
 });
 
 const deriveBanTimestamp = (record: { _id: unknown; createdAt?: Date | string }) => {
@@ -176,9 +181,11 @@ const buildAdminAuthPayload = (record: {
   createdAt?: Date;
   lastActivity?: Date | null;
   isOnline?: boolean;
-}) => {
+  linkedWallet?: string | null;
+}, ttl?: ReturnType<typeof hubSessionTtl>) => {
   const id = String(record._id);
-  const accessToken = JWT.sign(id);
+  // "Keep me signed in" decides how long the session lasts, as in the Studio
+  const accessToken = JWT.sign(id, ttl);
   const refreshToken = getRefreshToken(id);
 
   return {
@@ -549,7 +556,7 @@ export const adminLogout = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { token } = req;
 
-    await REDIS.set({ key: `logout:${token}`, data: { token }, ttl: 7 * 24 * 60 * 60 });
+    await revokeToken(token!);
 
     res.clearCookie("refreshToken");
 
@@ -701,6 +708,28 @@ export const deleteAdminInvite = async (req: GlobalRequest, res: GlobalResponse)
   }
 };
 
+/**
+ * POST /admin/sign-in/check { email, password, walletAddress }: whether the connected wallet can open
+ * the account. Answers only for a correct password, like the Studio's /hub/sign-in/check.
+ */
+export const checkAdminSignInWallet = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { email, password, walletAddress } = req.body ?? {};
+		const found = await admin.findOne({ email: String(email ?? "").trim() });
+		if (!found?.password || !(await bcrypt.compare(String(password ?? ""), found.password))) {
+			res.status(BAD_REQUEST).json({ status: "unknown" });
+			return;
+		}
+		if (!walletAddress) { res.status(OK).json({ status: "walletRequired" }); return; }
+		const linked = found.linkedWallet;
+		if (!linked || linked.toLowerCase() === String(walletAddress).toLowerCase()) { res.status(OK).json({ status: "ok" }); return; }
+		res.status(OK).json({ status: "wrongWallet", error: "Switch to the wallet linked to this account to sign in." });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't check the wallet" });
+	}
+};
+
 export const adminLogin = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
 		const { email, password }: { email: string; password: string } = req.body;
@@ -716,8 +745,35 @@ export const adminLogin = async (req: GlobalRequest, res: GlobalResponse) => {
 			res.status(BAD_REQUEST).json({ error: "invalid credentials" });
 			return;
     }
-		
-    const { id, accessToken, refreshToken, admin: authAdmin } = buildAdminAuthPayload(adminExists.toObject());
+
+		// Wallet-locked sign-in, as in the Studio: the wallet proven by its token (one signature when it
+		// connected) must be the one linked to the account. The first wallet used is linked.
+		const walletAddress = await walletFromToken(req.body?.walletToken);
+		const linked = adminExists.linkedWallet ?? null;
+		if (!walletAddress) {
+			res.status(FORBIDDEN).json({ error: linked ? "Connect the wallet linked to this account to sign in." : "Connect your wallet to sign in.", walletRequired: true });
+			return;
+		}
+		if (linked && walletAddress.toLowerCase() !== linked.toLowerCase()) {
+			res.status(FORBIDDEN).json({ error: "Switch to the wallet linked to this account to sign in.", wrongWallet: true });
+			return;
+		}
+		if (!linked) {
+			if (await admin.exists({ _id: { $ne: adminExists._id }, linkedWallet: walletAddress.toLowerCase() })) {
+				res.status(FORBIDDEN).json({ error: "This wallet is already linked to another admin. Connect your own wallet.", wrongWallet: true });
+				return;
+			}
+			adminExists.linkedWallet = walletAddress.toLowerCase();
+			await adminExists.save();
+		}
+
+		// 2-step verification, as in the Studio: the session is only issued after a Google Authenticator code
+		if (adminExists.twoFactorEnabled) {
+			res.status(OK).json({ twoFactorRequired: true, twoFactorToken: JWT.signFor(adminExists._id.toString(), ADMIN_TWO_FACTOR_PURPOSE, "10m") });
+			return;
+		}
+
+    const { id, accessToken, refreshToken, admin: authAdmin } = buildAdminAuthPayload(adminExists.toObject(), hubSessionTtl(req.body?.remember));
 
 		req.id = id;
 
@@ -767,12 +823,24 @@ export const createAdmin = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
+		// As in Studio sign-up, the wallet proven here is the only one that can sign in to this account
+		const walletAddress = await walletFromToken(req.body?.walletToken);
+		if (!walletAddress) {
+			res.status(UNAUTHORIZED).json({ error: "Connect and verify your wallet to finish setting up your account.", walletRequired: true });
+			return;
+		}
+		if (await admin.exists({ _id: { $ne: semiAdmin._id }, linkedWallet: walletAddress.toLowerCase() })) {
+			res.status(BAD_REQUEST).json({ error: "This wallet is already linked to another admin. Connect your own wallet.", wrongWallet: true });
+			return;
+		}
+
 		const hashedPassword = await hashPassword(password);
 
 		semiAdmin.verified = true;
 		semiAdmin.password = hashedPassword;
 		semiAdmin.username = resolvedUsername;
 		semiAdmin.code = "";
+		semiAdmin.linkedWallet = walletAddress.toLowerCase();
 
     await semiAdmin.save();
 
@@ -1074,7 +1142,8 @@ export const forgotAdminPassword = async (req: GlobalRequest, res: GlobalRespons
       return;
     }
 
-    const token = JWT.sign(adminExists._id.toString(), "10m");
+    // A reset-only token: it can't be used as a session, and a session token can't reset a password
+    const token = JWT.signFor(adminExists._id.toString(), "admin-reset", "10m");
     await sendAdminResetEmail(normalizedEmail, token, clientUrl);
 
     res.status(OK).json({ message: "password reset email sent!" });
@@ -1099,7 +1168,14 @@ export const resetAdminPassword = async (req: GlobalRequest, res: GlobalResponse
       return;
     }
 
-    const { id } = await JWT.verify(token) as { id: string };
+    let id: string;
+    let issuedAt: number;
+    try {
+      ({ id, issuedAt } = await JWT.verifyFor(token, "admin-reset"));
+    } catch {
+      res.status(BAD_REQUEST).json({ error: "this reset link is invalid or has expired, request a new one" });
+      return;
+    }
     const adminExists = await admin.findOne({ _id: id, verified: true });
 
     if (!adminExists) {
@@ -1107,7 +1183,16 @@ export const resetAdminPassword = async (req: GlobalRequest, res: GlobalResponse
       return;
     }
 
+    // Works once: after a password change, links issued before it no longer do (even if Redis is down)
+    const changedAt = (adminExists as any).passwordChangedAt ? new Date((adminExists as any).passwordChangedAt).getTime() : 0;
+    if (changedAt && issuedAt < changedAt) {
+      res.status(BAD_REQUEST).json({ error: "access token already used, request a new one to change your password" });
+      return;
+    }
+
     adminExists.password = await hashPassword(password);
+    // Signs out every other session
+    (adminExists as any).passwordChangedAt = new Date(Math.max(passwordChangeMark().getTime(), issuedAt + 1000));
     await adminExists.save();
 
     await REDIS.set({ key: `admin-reset-access-token:${token}`, data: { token }, ttl: 10 * 60 });
@@ -1418,6 +1503,12 @@ export const markTask = async (req: GlobalRequest, res: GlobalResponse) => {
 				return
 			}
 
+		} else if (submissionToBeVerified.page === "ecosystem") {
+			model = await ecosystemQuestCompleted.findOne({ _id: submissionToBeVerified.questCompleted, status: { $in: ["pending", "retry"] } });
+			if (!model) {
+				res.status(NOT_FOUND).json({ error: "ecosystem quest already completed or is invalid" });
+				return
+			}
 		} else {
 			model = await campaignQuestCompleted.findOne({ _id: submissionToBeVerified.questCompleted, status: { $in: ["pending", "retry"] } });
 			if (!model) {
@@ -2042,7 +2133,7 @@ export const publishAdminQuest = async (req: GlobalRequest, res: GlobalResponse)
     res.status(OK).json({ message: "Quest published successfully!" });
   } catch (error: any) {
     logger.error("Error publishing quest: " + error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "Error publishing quest" });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "Error publishing quest" });
   }
 };
 

@@ -8,11 +8,7 @@ import {
 	reopenCampaign,
 	updateCampaign,
 } from "@/controllers/campaign.controller";
-import {
-	createCampaignQuests,
-	createEcosystemQuests,
-	fetchCampaignQuests,
-} from "@/controllers/quest.controller";
+import { fetchCampaignQuests } from "@/controllers/quest.controller";
 import {
 	authenticateHubAdmin,
 	authenticateUser,
@@ -28,8 +24,6 @@ router
 	.patch("/close-campaign", authenticateHubAdmin, closeCampaign)
 	.patch("/reopen-campaign", authenticateHubAdmin, reopenCampaign)
 	.post("/create-campaign", authenticateHubAdmin, upload.single("coverImage"), createCampaign)
-	.post("/create-campaign-quests", authenticateHubAdmin, createCampaignQuests)
-	.post("/create-ecosystem-quests", authenticateHubAdmin, createEcosystemQuests)
 	.post("/join-campaign", authenticateUser, joinCampaign)
 	.get("/quests", authenticateUser2, fetchCampaignQuests)
 	.patch("/update-campaign", authenticateHubAdmin, updateCampaign);

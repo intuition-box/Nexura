@@ -1,5 +1,6 @@
 import { BACKEND_URL } from "./constants";
 import { toUserFriendlyErrorMessage } from "./errorMessages";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 const PROJECT_API_URL = (BACKEND_URL ?? "") as string;
 
@@ -35,9 +36,79 @@ export function getStoredProjectInfo(): Record<string, unknown> | null {
   }
 }
 
-export function storeProjectSession(token: string, info: Record<string, unknown>) {
+// ─── "Keep me signed in" ─────────────────────────────────────────────────────
+const SESSION_ONLY_KEY = "nexura-project:session-only";
+const ALIVE_COOKIE = "nexura-studio-alive";
+
+function browserSessionAlive(): boolean {
+  try { return document.cookie.split("; ").includes(`${ALIVE_COOKIE}=1`); } catch { return false; }
+}
+
+function setBrowserSessionCookie(on: boolean) {
+  try {
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${ALIVE_COOKIE}=${on ? "1" : ""}; Path=/; SameSite=Strict${on ? "" : "; Max-Age=0"}${secure}`;
+  } catch { /* cookies unavailable */ }
+}
+
+if (typeof window !== "undefined") {
+  try {
+    if (localStorage.getItem(SESSION_ONLY_KEY) && !browserSessionAlive()) {
+      for (const k of ["nexura-project:token", "nexura-project:info", "nexura:proj-token", SESSION_ONLY_KEY]) localStorage.removeItem(k);
+    }
+  } catch { /* storage unavailable */ }
+}
+
+export function storeProjectSession(token: string, info: Record<string, unknown>, remember?: boolean) {
   localStorage.setItem("nexura-project:token", token);
   localStorage.setItem("nexura-project:info", JSON.stringify(info));
+  if (remember === true) {
+    localStorage.removeItem(SESSION_ONLY_KEY);
+    setBrowserSessionCookie(false);
+  } else if (remember === false) {
+    setBrowserSessionCookie(true);
+    if (browserSessionAlive()) localStorage.setItem(SESSION_ONLY_KEY, "1");
+  }
+  notifySessionChanged();
+}
+
+// ─── Session expiry ──────────────────────────────────────────────────────────
+/** Fired when the studio session starts, ends or expires, so the header can update. */
+export const PROJECT_SESSION_EVENT = "nexura-project-session";
+// The token the server last refused as expired or invalid
+const EXPIRED_TOKEN_KEY = "nexura-project:expired-token";
+
+function notifySessionChanged() {
+  try { window.dispatchEvent(new Event(PROJECT_SESSION_EVENT)); } catch {}
+}
+
+/** Expiry time (ms) from a JWT, or null when the token has none or can't be read. */
+function tokenExpiry(token: string): number | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json?.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True only while there is a studio token that hasn't expired and the server hasn't refused. */
+export function isProjectSessionActive(): boolean {
+  const token = getStoredProjectToken();
+  if (!token) return false;
+  try { if (localStorage.getItem(EXPIRED_TOKEN_KEY) === token) return false; } catch { /* ignore */ }
+  const exp = tokenExpiry(token);
+  return exp === null || exp > Date.now();
+}
+
+/** Marks the current token as no longer valid (the server said it expired). */
+function markProjectSessionExpired() {
+  const token = getStoredProjectToken();
+  if (!token) return;
+  try { localStorage.setItem(EXPIRED_TOKEN_KEY, token); } catch { /* ignore */ }
+  notifySessionChanged();
 }
 
 export function clearProjectSession() {
@@ -47,13 +118,19 @@ export function clearProjectSession() {
   localStorage.removeItem("nexura:studio-wallet");
   localStorage.removeItem("nexura:studio-step");
   localStorage.removeItem("nexura:studio-discord-return");
+  localStorage.removeItem(EXPIRED_TOKEN_KEY);
+  localStorage.removeItem(SESSION_ONLY_KEY);
+  setBrowserSessionCookie(false);
   localStorage.removeItem("hubData");
   localStorage.removeItem("twitterData");
   clearUserSession();
-  // NOTE: nexura:wallet is intentionally NOT cleared here.
-  // It belongs to the main app wallet connection (use-wallet.tsx),
-  // not the studio/project session. Clearing it here would
-  // disconnect the user's wallet when logging out of the studio.
+  notifySessionChanged();
+}
+
+export async function endProjectSession() {
+  if (!getStoredProjectToken()) return;
+  try { await projectApiRequest({ method: "POST", endpoint: "/hub/logout" }); } catch { /* ignore */ }
+  clearProjectSession();
 }
 
 export function isProjectSignedIn(): boolean {
@@ -77,15 +154,42 @@ async function throwIfNotOk(res: Response): Promise<void> {
       (json as Record<string, unknown>)?.message ??
       res.statusText;
 
+    // The server refuses an expired or invalid token: the session is over until they sign in again
+    if ((res.status === 400 || res.status === 401) && /token has expired|kindly re-?login|authorization token is missing or invalid/i.test(String(msg))) {
+      markProjectSessionExpired();
+    }
+
+    // Removed from the hub by an approved proposal: the session ends right away
+    if (String(msg).includes("access to this hub has been removed")) {
+      clearProjectSession();
+      try { sessionStorage.setItem("nexura:signed-out-reason", "Your access to this hub was removed."); } catch { /* ignore */ }
+      setTimeout(() => { window.location.href = "/studio/sign-in"; }, 100);
+    }
+
     // Force logout if hub is banned
     if (res.status === 403 && String(msg).includes("this hub has been banned")) {
       clearProjectSession();
-      setTimeout(() => { window.location.href = "/projects/create/signin-to-hub"; }, 100);
+      setTimeout(() => { window.location.href = "/studio/sign-in"; }, 100);
     }
 
-    throw new Error(toUserFriendlyErrorMessage(String(msg)));
+    throw new ApiError(toUserFriendlyErrorMessage(String(msg)), res.status);
   }
 }
+
+/** Error from a project API call that also carries the HTTP status. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Fired after every successful Studio change, so open pages reload their data right away. */
+export const STUDIO_DATA_EVENT = "nexura-studio-data-changed";
+// Saves that don't change what other pages show (builder autosave, marking notifications read)
+const SILENT_CHANGES = ["/hub/save-campaign", "/hub/upload-campaign-cover", "/hub/governance/notifications/read"];
 
 export const projectApiRequest = async <T = unknown>({
   method,
@@ -113,7 +217,7 @@ export const projectApiRequest = async <T = unknown>({
 
   console.log(`[API:project] → ${method} ${endpoint}`);
   try {
-    const res = await fetch(url, {
+    const res = await resilientFetch(url, {
       method,
       headers,
       body: formData ?? (data !== undefined ? JSON.stringify(data) : undefined),
@@ -132,6 +236,9 @@ export const projectApiRequest = async <T = unknown>({
       : (rawHeader ?? null);
 
     console.log(`[API:project] ✓ ${method} ${endpoint}`);
+    if (method.toUpperCase() !== "GET" && !SILENT_CHANGES.some(e => endpoint.startsWith(e))) {
+      try { window.dispatchEvent(new Event(STUDIO_DATA_EVENT)); } catch {}
+    }
     return {
       ...(typeof json === "object" && json !== null ? (json as Record<string, unknown>) : {}),
       token:

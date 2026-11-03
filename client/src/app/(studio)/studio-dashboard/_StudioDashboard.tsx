@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import StudioBackground from "@/components/StudioBackground";
 import StudioSidebar from "@/components/studio/StudioSidebar";
+import StudioHeader from "@/components/studio/StudioHeader";
+import { useSessionExpiryRedirect } from "@/components/studio/useProjectSession";
+import SignerReminder from "@/components/studio/SignerReminder";
 import { apiRequest } from "@/lib/config";
-import { projectApiRequest, isProjectSignedIn } from "@/lib/projectApi";
+import { projectApiRequest } from "@/lib/projectApi";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getStoredAdminInfo } from "@/lib/config";
 import {
@@ -23,15 +26,11 @@ import {
 } from "@/components/ui/dialog";
 import { Calendar, Shield, LayoutDashboard, Search, Bell, RefreshCw, Check, X, Eye, Clock, CheckCircle2, XCircle, ChevronDown, Users, FileText, Copy } from "lucide-react";
 import { StatsOverview } from "@/components/admin/StatsOverview";
-import CampaignSubmissions from "@/components/admin/CampaignSubmissions";
+import SubmissionsHub from "@/components/admin/SubmissionsHub";
 import { TASKS } from "@/types/admin";
 import AdminManagement, { AdminType as Admin } from "@/components/admin/AdminManagement";
 import CampaignsTab from "@/components/admin/CampaignsTab";
 import CreateNewCampaigns from "@/components/admin/CreateNewCampaign";
-interface StudioDashboardProps {
-  onLogout: () => void;
-}
-
 
 type BannedUser = {
   _id: string;
@@ -40,15 +39,15 @@ type BannedUser = {
   bannedAt: string;
 }
 
-type TabType = "hubProfile" | "campaignSubmissions" | "adminManagement" | "campaignsTab";
+type TabType = "hubProfile" | "accountSettings" | "campaignSubmissions" | "adminManagement" | "campaignsTab" | "campaignsFlow";
 
-export default function StudioDashboard({ onLogout }: StudioDashboardProps) {
+export default function StudioDashboard() {
   const pathname = usePathname();
-  const router = useRouter();
   const deriveTab = (): TabType => {
     if (pathname.includes("/studio-dashboard/dashboard")) return "campaignSubmissions";
     if (pathname.includes("hub-profile")) return "hubProfile";
     if (pathname.includes("admin-management")) return "adminManagement";
+    if (pathname.includes("campaigns-flow")) return "campaignsFlow";
     if (pathname.includes("campaigns-tab") || pathname.includes("create-new-campaign") || pathname.includes("my-campaign")) {
       return "campaignsTab";
     }
@@ -60,12 +59,7 @@ export default function StudioDashboard({ onLogout }: StudioDashboardProps) {
     setActiveTab(deriveTab());
   }, [pathname]);
 
-  // Auth guard - redirect to /studio if no valid session
-  useEffect(() => {
-    if (!isProjectSignedIn()) {
-      router.push("/studio");
-    }
-  }, []);
+  useSessionExpiryRedirect();
   const [viewedSubmissions, setViewedSubmissions] = useState<Set<string>>(new Set());
 const [campaignTasks, setCampaignTasks] = useState<TASKS[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
@@ -74,6 +68,8 @@ const [campaignTasks, setCampaignTasks] = useState<TASKS[]>([]);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TASKS | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+  // Bumped after a submission is accepted or rejected so the Submissions view reloads
+  const [submissionsRefresh, setSubmissionsRefresh] = useState(0);
     
 
   const fetchTasks = async () => {
@@ -116,20 +112,10 @@ const [campaignTasks, setCampaignTasks] = useState<TASKS[]>([]);
     }
   };
 
-  const handleView = (id: string, _taskType: string, _link: string) => {
-    console.log("[ACTION] StudioDashboard.handleView", id);
-    try {
-      // Always show modal instead of opening links directly
-      const allTasks = [...campaignTasks];
-      const task = allTasks.find(t => t._id === id);
-      if (task) {
-        setSelectedTask(task);
-        setViewModalOpen(true);
-        setViewedSubmissions((prev) => new Set(prev).add(id));
-      }
-    } catch (error) {
-      console.error("Error in handleView:", error);
-    }
+  const openSubmission = (task: TASKS) => {
+    setSelectedTask(task);
+    setViewModalOpen(true);
+    setViewedSubmissions((prev) => new Set(prev).add(task._id));
   };
 
   const handleAction = async (id: string, action: "accept" | "reject") => {
@@ -144,6 +130,8 @@ const [campaignTasks, setCampaignTasks] = useState<TASKS[]>([]);
 
       // Refresh tasks after action
       await fetchTasks();
+      setSubmissionsRefresh(n => n + 1);
+      setViewModalOpen(false);
 
       // Remove from viewed submissions
       setViewedSubmissions((prev) => {
@@ -199,6 +187,7 @@ const fetchBannedUsers = async () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
       <StudioBackground />
+      <SignerReminder />
 
       <div className="relative z-10 flex h-screen flex-col md:flex-row">
 
@@ -210,60 +199,38 @@ const fetchBannedUsers = async () => {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="hidden md:flex h-16 border-b border-white/10 items-center justify-between px-6 backdrop-blur-sm bg-black/30">
-  <div className="flex items-center gap-4 flex-1">
-    <h2 className="text-lg font-semibold text-white whitespace-nowrap min-w-[200px]">
-      {activeTab === "hubProfile" && "Project Profile"}
-      {activeTab === "campaignSubmissions" && "Nexura Studio"}
-      {activeTab === "adminManagement" && "User Administration"}
-      {activeTab === "campaignsTab" && "Campaigns"}
-    </h2>
-  </div>
-
-  <div className="flex items-center gap-4">
-    <Button variant="ghost" size="icon" className="text-white/70 hover:text-white hover:bg-white/5">
-      <Bell className="w-5 h-5" />
-    </Button>
-
-    <div className="h-6 w-px bg-white/10 mx-2" />
-
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => {
-        onLogout();
-        router.push("/discover");
-      }}
-      className="text-white/70 hover:text-white hover:text-red-400"
-    >
-      Logout
-    </Button>
-  </div>
-</header>
+          <div className="hidden md:block">
+            <StudioHeader
+              title={
+                activeTab === "hubProfile" ? "Project Profile"
+                : activeTab === "adminManagement" ? "User Administration"
+                : activeTab === "campaignsTab" ? "Campaigns"
+                : activeTab === "campaignsFlow" ? "New Campaigns"
+                : activeTab === "campaignSubmissions" ? "Submissions"
+                : "Nexura Studio"
+              }
+            />
+          </div>
 
 
-          <main className="flex-1 overflow-y-auto pt-4 pb-8 px-4 md:pt-8 md:pb-8 md:px-8 relative bg-black/20">
+          <main className="flex-1 overflow-y-auto pt-16 pb-24 px-4 md:pt-8 md:pb-8 md:px-9 relative bg-[#f7f5ff] text-[#1c2533]" style={{ fontFamily: "'Geist', 'Inter', sans-serif" }}>
             <div className="max-w-7xl mx-auto">
-              {activeTab !== "adminManagement" && activeTab !== "campaignsTab" && (
-                <StatsOverview key={activeTab} tasks={activeTab === "campaignSubmissions" ? campaignTasks : []} />
-              )}
+              {activeTab === "hubProfile" && <StatsOverview key={activeTab} tasks={[]} />}
               {activeTab === "campaignsTab" && <CampaignsTab />}
 
               {activeTab === "campaignSubmissions" && (
-<CampaignSubmissions
-  tasks={campaignTasks}
-  loading={loading}
-  searchTerm={searchTerm}
-  setSearchTerm={setSearchTerm}
-  selectedUsers={selectedUsers}
-  viewedSubmissions={viewedSubmissions}
-  toggleUserSelection={toggleUserSelection}
-  handleView={handleView}
-  handleAction={handleAction}
-  onRefresh={fetchTasks}
-/>
-
-)}
+                <SubmissionsHub
+                  refreshKey={submissionsRefresh}
+                  loading={loading}
+                  searchTerm={searchTerm}
+                  setSearchTerm={setSearchTerm}
+                  selectedUsers={selectedUsers}
+                  viewedSubmissions={viewedSubmissions}
+                  toggleUserSelection={toggleUserSelection}
+                  onOpenSubmission={openSubmission}
+                  handleAction={handleAction}
+                />
+              )}
 
               {activeTab === "adminManagement" && <AdminManagement />}
             </div>
@@ -273,15 +240,15 @@ const fetchBannedUsers = async () => {
 
       {/* View Task Modal */}
       <Dialog open={viewModalOpen} onOpenChange={setViewModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-white/5 border-white/10 backdrop-blur-[125px] text-white shadow-2xl">
+        <DialogContent className="sm:max-w-[500px] bg-white border-[0.833px] border-[rgba(28,37,51,0.15)] rounded-[40px] text-[#1c2533] shadow-[0px_22px_25px_rgba(28,37,51,0.28)]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-              <div className="p-2 rounded-full bg-[#8a3ffc]/20">
+              <div className="p-2 rounded-full bg-[rgba(138,63,252,0.1)]">
                 <Eye className="w-5 h-5 text-[#8B3EFE]" />
               </div>
               View {selectedTask?.taskType} Submission
             </DialogTitle>
-            <DialogDescription className="text-white/50">
+            <DialogDescription className="text-[#69728a]">
               Submission details for validation
             </DialogDescription>
           </DialogHeader>
@@ -289,30 +256,30 @@ const fetchBannedUsers = async () => {
           {selectedTask && (
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label className="text-white/70">Task Type</Label>
-                <div className="text-white capitalize">{selectedTask.taskType}</div>
+                <Label className="text-[13px] font-semibold text-[#3d485c]">Task Type</Label>
+                <div className="text-[#1c2533] capitalize">{selectedTask.taskType}</div>
               </div>
 
               {selectedTask.taskType && selectedTask.taskType.toLowerCase() === "feedback" ? (
                 <div className="grid gap-2">
-                  <Label className="text-white/70">User Feedback</Label>
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 max-h-60 overflow-y-auto">
-                    <p className="text-white text-sm whitespace-pre-wrap leading-relaxed">{selectedTask.submissionLink}</p>
+                  <Label className="text-[13px] font-semibold text-[#3d485c]">User Feedback</Label>
+                  <div className="bg-[#f4f1fc] border border-[rgba(28,37,51,0.09)] rounded-[16px] p-4 max-h-60 overflow-y-auto">
+                    <p className="text-[#1c2533] text-sm whitespace-pre-wrap leading-relaxed">{selectedTask.submissionLink}</p>
                   </div>
-                  <p className="text-xs text-white/40">{selectedTask.submissionLink.length} characters</p>
+                  <p className="text-xs text-[#98a0b4]">{selectedTask.submissionLink.length} characters</p>
                 </div>
               ) : selectedTask.taskType === "wallet-address" ? (
                 <div className="grid gap-2">
-                  <Label className="text-white/70">Wallet Address</Label>
+                  <Label className="text-[13px] font-semibold text-[#3d485c]">Wallet Address</Label>
                   <div className="flex gap-2">
                     <Input
                       value={selectedTask.submissionLink}
                       readOnly
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-[#8a3ffc] flex-1 font-mono"
+                      className="bg-[#f4f1fc] border-[rgba(28,37,51,0.15)] text-[#1c2533] placeholder:text-[#98a0b4] rounded-[12px] focus-visible:ring-[#8a3ffc] flex-1 font-mono"
                     />
                     <Button
                       onClick={() => navigator.clipboard.writeText(selectedTask.submissionLink)}
-                      className="bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
+                      className="rounded-[40px] bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
                     >
                       <Copy className="w-4 h-4" />
                     </Button>
@@ -320,7 +287,7 @@ const fetchBannedUsers = async () => {
                 </div>
               ) : selectedTask.taskType && ["follow", "like"].includes(selectedTask.taskType.toLowerCase()) ? (
                 <div className="grid gap-2">
-                  <Label className="text-white/70">Username to {selectedTask.taskType}</Label>
+                  <Label className="text-[13px] font-semibold text-[#3d485c]">Username to {selectedTask.taskType}</Label>
                   <div className="flex gap-2">
                     <Input
                       value={(() => {
@@ -329,7 +296,7 @@ const fetchBannedUsers = async () => {
                         return urlMatch ? `x.com/${urlMatch[1]}` : selectedTask.submissionLink;
                       })()}
                       readOnly
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-[#8a3ffc] flex-1"
+                      className="bg-[#f4f1fc] border-[rgba(28,37,51,0.15)] text-[#1c2533] placeholder:text-[#98a0b4] rounded-[12px] focus-visible:ring-[#8a3ffc] flex-1"
                     />
                     <Button
                       onClick={() => {
@@ -338,7 +305,7 @@ const fetchBannedUsers = async () => {
                         if (targetUrl) window.open(targetUrl, "_blank");
                       }}
                       disabled={!selectedTask.submissionLink}
-                      className="bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
+                      className="rounded-[40px] bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
                     >
                       <Eye className="w-4 h-4" />
                     </Button>
@@ -346,16 +313,16 @@ const fetchBannedUsers = async () => {
                 </div>
               ) : (
                 <div className="grid gap-2">
-                  <Label className="text-white/70">Submission Link</Label>
+                  <Label className="text-[13px] font-semibold text-[#3d485c]">Submission Link</Label>
                   <div className="flex gap-2">
                     <Input
                       value={selectedTask.submissionLink}
                       readOnly
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-[#8a3ffc] flex-1"
+                      className="bg-[#f4f1fc] border-[rgba(28,37,51,0.15)] text-[#1c2533] placeholder:text-[#98a0b4] rounded-[12px] focus-visible:ring-[#8a3ffc] flex-1"
                     />
                     <Button
                       onClick={() => window.open(selectedTask.submissionLink, "_blank")}
-                      className="bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
+                      className="rounded-[40px] bg-[#8B3EFE] hover:bg-[#7b35e6] text-white px-4"
                     >
                       <Eye className="w-4 h-4" />
                     </Button>
@@ -364,17 +331,17 @@ const fetchBannedUsers = async () => {
               )}
 
               <div className="grid gap-2">
-                <Label className="text-white/70">Campaign ID</Label>
-                <div className="text-white/60 text-sm">{selectedTask.campaignId}</div>
+                <Label className="text-[13px] font-semibold text-[#3d485c]">Campaign ID</Label>
+                <div className="text-[#69728a] text-sm font-mono">{selectedTask.campaignId}</div>
               </div>
 
               <div className="grid gap-2">
-                <Label className="text-white/70">Status</Label>
+                <Label className="text-[13px] font-semibold text-[#3d485c]">Status</Label>
                 <Badge className={cn(
                   "w-fit",
-                  selectedTask.status === "pending" && "bg-yellow-500/20 text-yellow-400",
-                  selectedTask.status === "done" && "bg-green-500/20 text-green-400",
-                  selectedTask.status === "retry" && "bg-red-500/20 text-red-400"
+                  selectedTask.status === "pending" && "bg-[rgba(245,158,11,0.14)] text-[#c27c00] hover:bg-[rgba(245,158,11,0.14)]",
+                  selectedTask.status === "done" && "bg-[rgba(0,225,162,0.16)] text-[#00a87c] hover:bg-[rgba(0,225,162,0.16)]",
+                  selectedTask.status === "retry" && "bg-[rgba(248,113,113,0.16)] text-[#e4545b] hover:bg-[rgba(248,113,113,0.16)]"
                 )}>
                   {selectedTask.status}
                 </Badge>
@@ -384,10 +351,10 @@ const fetchBannedUsers = async () => {
 
           {/* Review Actions for Completed Tasks */}
           {selectedTask && selectedTask.status !== "pending" && (
-            <div className="flex items-center justify-center gap-3 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-center gap-3 pt-4 border-t-[0.833px] border-[rgba(28,37,51,0.09)]">
               <Button
                 onClick={() => handleAction(selectedTask._id, "accept")}
-                className="bg-green-500/20 text-green-400 hover:bg-green-500/30 hover:text-green-300 border border-green-500/50 rounded-full px-6 py-2"
+                className="bg-[rgba(0,225,162,0.16)] text-[#00a87c] hover:bg-[rgba(0,225,162,0.24)] border border-[rgba(0,168,124,0.3)] rounded-full px-6 py-2"
                 disabled={loading}
               >
                 <Check className="w-4 h-4 mr-2" />
@@ -395,7 +362,7 @@ const fetchBannedUsers = async () => {
               </Button>
               <Button
                 onClick={() => handleAction(selectedTask._id, "reject")}
-                className="bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 border border-red-500/50 rounded-full px-6 py-2"
+                className="bg-[rgba(248,113,113,0.16)] text-[#e4545b] hover:bg-[rgba(248,113,113,0.24)] border border-[rgba(228,84,91,0.3)] rounded-full px-6 py-2"
                 disabled={loading}
               >
                 <X className="w-4 h-4 mr-2" />

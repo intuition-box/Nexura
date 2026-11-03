@@ -99,7 +99,7 @@ export default function ProjectsHub() {
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe your project (150–300 characters)"
+            placeholder="Describe your project (up to 300 characters)"
             maxLength={300}
             className="bg-gray-800 border-purple-500 text-white h-32"
           />

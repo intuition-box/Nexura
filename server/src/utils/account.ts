@@ -1,4 +1,5 @@
 import { createWalletClient, parseAbi, http, type WalletClient, type PublicClient, createPublicClient } from "viem";
+import { OUTBOUND_TIMEOUT_MS } from "@/utils/resilience";
 import { privateKeyToAccount } from "viem/accounts";
 import { PRIVATE_KEY, network } from "./env.utils";
 import { NexonsAddress, ETH_MAINNET_RPC } from "./constants";
@@ -17,7 +18,8 @@ const getWalletClient = () => {
 		walletClient = createWalletClient({
 			account,
 			chain,
-			transport: http(),
+			// A sent transaction is identified by its hash, so resending it after a timeout is safe
+			transport: http(undefined, { timeout: OUTBOUND_TIMEOUT_MS, retryCount: 3 }),
 		});
 	}
 
@@ -28,7 +30,7 @@ export const getPublicClient = () => {
 	if (!publicClient) {
 		publicClient = createPublicClient({
 			chain,
-			transport: http(),
+			transport: http(undefined, { timeout: OUTBOUND_TIMEOUT_MS, retryCount: 3 }),
 		});
 	}
 
@@ -43,7 +45,7 @@ export const getEthMainnetClient = () => {
 	if (!ethMainnetClient) {
 		ethMainnetClient = createPublicClient({
 			chain: mainnet,
-			transport: http(ETH_MAINNET_RPC),
+			transport: http(ETH_MAINNET_RPC, { timeout: OUTBOUND_TIMEOUT_MS, retryCount: 3 }),
 		});
 	}
 

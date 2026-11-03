@@ -1,5 +1,6 @@
 import { BACKEND_URL } from "./constants";
 import { toUserFriendlyErrorMessage } from "./errorMessages";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 const USER_API_URL = (BACKEND_URL ?? "") as string;
 
@@ -86,7 +87,7 @@ export const userApiRequest = async <T = unknown>({
 
   console.log(`[API:user] → ${method} ${endpoint}`);
   try {
-    const res = await fetch(url, {
+    const res = await resilientFetch(url, {
       method,
       headers,
       body: formData ?? (data !== undefined ? JSON.stringify(data) : undefined),

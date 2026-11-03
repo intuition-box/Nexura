@@ -44,8 +44,8 @@ export default function TheHub() {
       return;
     }
 
-    if (description.length > 0 && (description.length < 150 || description.length > 300)) {
-      toast({ title: "Description invalid", description: "Minimum 150 and maximum 300 characters required.", variant: "destructive" });
+    if (description.length > 300) {
+      toast({ title: "Description invalid", description: "Keep it under 300 characters.", variant: "destructive" });
       return;
     }
 
@@ -179,22 +179,17 @@ export default function TheHub() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Description</CardTitle>
-              <span className={`text-xs ${description.length > 0 && (description.length < 150 || description.length > 300) ? "text-red-400" : "text-white/40"}`}>
+              <span className={`text-xs ${description.length > 300 ? "text-red-400" : "text-white/40"}`}>
                 {description.length}/300
               </span>
             </div>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe your project or community (150-300 characters)"
+              placeholder="Describe your project or community (up to 300 characters)"
               maxLength={300}
               className="bg-gray-800 border-purple-500 text-white resize-none h-32"
             />
-            {description.length > 0 && description.length < 150 && (
-              <p className="text-xs text-red-400">
-                Minimum 150 characters – {150 - description.length} more needed
-              </p>
-            )}
           </div>
 
           {/* Optional Social Info */}

@@ -98,6 +98,11 @@ const ecosystemQuestCompletedSchema = new Schema({
 		type: Date,
 		required: true,
 	},
+	status: {
+		type: String,
+		enum: ["started", "pending", "retry", "approved", "done"],
+		default: "started",
+	},
 	ecosystemQuest: {
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "ecosystemQuest",

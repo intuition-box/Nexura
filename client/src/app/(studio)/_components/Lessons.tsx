@@ -113,10 +113,10 @@ export default function Lessons() {
 
   return (
     <div className="flex flex-col items-center justify-center py-20 min-h-[400px]">
-      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">
+      <h1 className="text-4xl md:text-6xl font-bold text-[#1c2533] mb-4 tracking-tight">
         Coming Soon
       </h1>
-      <p className="text-white/40 text-lg">
+      <p className="text-[#69728a] text-lg">
         The lessons management feature is currently under development.
       </p>
     </div>

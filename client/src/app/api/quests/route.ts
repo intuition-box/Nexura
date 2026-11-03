@@ -1,13 +1,16 @@
-export async function GET() {
+import { resilientFetch } from "@/lib/resilientFetch";
+import { forwardDevAccess } from "@/lib/devAccess";
+export async function GET(req: Request) {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
     console.log("PROXY CALL →", baseUrl);
 
-    const res = await fetch(`${baseUrl}/api/quests`, {
+    const res = await resilientFetch(`${baseUrl}/api/quests`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        ...forwardDevAccess(req),
       },
     });
 

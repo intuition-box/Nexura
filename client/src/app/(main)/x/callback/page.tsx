@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequestV2 } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { projectApiRequest } from "@/lib/projectApi";
+import { STUDIO_X_RETURN_KEY } from "@/lib/generateXAuthUrl";
 
 function XCallbackInner() {
   const router = useRouter();
@@ -13,20 +15,38 @@ function XCallbackInner() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const x_id = searchParams.get("x_id");
+    const ticket = searchParams.get("ticket");
     const username = searchParams.get("username");
 
-    if (!x_id || !username) {
+    if (!ticket || !username) {
       alert("No id or username returned from server.");
       router.push("/profile/edit"); // redirect to edit profile if values is missing
       return;
     }
 
+    // Started from Nexura Studio: the X account belongs to the hub, not the main-app user
+    let studioReturn: string | null = null;
+    try { studioReturn = localStorage.getItem(STUDIO_X_RETURN_KEY); localStorage.removeItem(STUDIO_X_RETURN_KEY); } catch { /* storage unavailable */ }
+    if (studioReturn) {
+      (async () => {
+        try {
+          const fd = new FormData();
+          fd.append("xAccount", username.replace(/^@/, ""));
+          await projectApiRequest({ method: "PATCH", endpoint: "/hub/update-hub", formData: fd });
+          toast({ title: "X connected", description: `@${username.replace(/^@/, "")} is now linked to your studio.` });
+        } catch (error: any) {
+          toast({ title: "Couldn't link X", description: error?.message, variant: "destructive" });
+        }
+        router.push(studioReturn!);
+      })();
+      return;
+    }
+
     // update user
     (async () => {
-      console.log("[ACTION] xCallback", { x_id, username });
+      console.log("[ACTION] xCallback", { username });
       try {
-        const { user } = await apiRequestV2("GET", `/api/x/update?x_id=${x_id}&username=${username}`);
+        const { user } = await apiRequestV2("GET", `/api/x/update?ticket=${encodeURIComponent(ticket)}`);
 
         setUser(user);
 

@@ -1,6 +1,9 @@
 "use client";
+import StudioLoader from "@/components/studio/StudioLoader";
 
 import { useEffect, useState, useCallback } from "react";
+import { useUrlState } from "../../hooks/use-url-state";
+import { useLiveRefresh } from "../../hooks/use-live-refresh";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RefreshCw, XCircle, Trash2, Loader2, Clock } from "lucide-react";
@@ -38,8 +41,10 @@ function getApiConfig() {
   return result;
 }
 
+const QUEST_TABS = ["all", "active", "scheduled", "drafts", "completed"] as const;
+
 export default function QuestsTab() {
-  const [activeTab, setActiveTab] = useState<"all" | "active" | "scheduled" | "drafts" | "completed">("all");
+  const [activeTab, setActiveTab] = useUrlState("tab", "all", QUEST_TABS);
   const [serverOffset, setServerOffset] = useState(0);
   const [countdowns, setCountdowns] = useState<Record<string, string>>({});
   const [quests, setQuests] = useState<Quest[]>([]);
@@ -53,9 +58,10 @@ export default function QuestsTab() {
   const session = getStoredUserSession();
   const isUser = session?.type === "user";
 
-  const fetchQuests = useCallback(async () => {
+  /** `quiet` refreshes in the background, without the loading state or error toasts. */
+  const fetchQuests = useCallback(async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const { apiPrefix, apiRequest } = getApiConfig();
       const res = await apiRequest<{ quests?: Quest[]; hubQuests?: Quest[] }>({
         method: "GET",
@@ -63,19 +69,22 @@ export default function QuestsTab() {
       });
       setQuests(res.quests ?? res.hubQuests ?? []);
     } catch (err: any) {
+      if (quiet) return;
       toast({
         title: "Fetch failed",
         description: err.message,
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [toast]);
 
   useEffect(() => {
     fetchQuests();
   }, [fetchQuests]);
+
+  useLiveRefresh(() => fetchQuests(true));
 
   // Server time sync
   useEffect(() => {
@@ -222,12 +231,12 @@ export default function QuestsTab() {
     const createUrl = "/user-dashboard/create-new-quest";
 
     return (
-      <Card key={quest._id} className="w-full h-full bg-gray-900 text-white rounded-xl overflow-hidden shadow-lg flex flex-col">
+      <Card key={quest._id} className="w-full h-full bg-white text-[#1c2533] rounded-xl overflow-hidden shadow-lg flex flex-col">
         {quest.projectCoverImage ? (
           <img src={quest.projectCoverImage} alt={quest.title || quest.description} className="w-full h-28 object-cover" />
         ) : (
-          <div className="w-full h-28 bg-gray-700 flex items-center justify-center">
-            <span className="text-white/50 text-xs">No Image</span>
+          <div className="w-full h-28 bg-[#efeafb] flex items-center justify-center">
+            <span className="text-[#69728a] text-xs">No Image</span>
           </div>
         )}
 
@@ -235,11 +244,11 @@ export default function QuestsTab() {
           <h3 className="font-bold text-sm truncate" title={quest.title || quest.description}>
             {quest.title || quest.description}
           </h3>
-          <p className="text-white/70 text-xs">
+          <p className="text-[#3d485c] text-xs">
             {formatDate(quest.starts_at)} - {formatDate(quest.ends_at)}
           </p>
           {Number(quest.reward?.pool ?? 0) > 0 && (
-            <p className="text-purple-400 text-xs font-medium">Reward Pool: {quest.reward?.pool} TRUST</p>
+            <p className="text-[#8a3ffc] text-xs font-medium">Reward Pool: {quest.reward?.pool} TRUST</p>
           )}
 
           <div className="mt-auto flex flex-col gap-2 pt-3">
@@ -254,7 +263,7 @@ export default function QuestsTab() {
               {!draft && !completed && (
                 <button
                   title="Close quest"
-                  className="px-2 py-1.5 text-xs bg-yellow-600/20 text-yellow-400 rounded-lg hover:bg-yellow-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-1.5 text-xs bg-yellow-600/20 text-[#c27c00] rounded-lg hover:bg-yellow-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setPendingAction({ type: "close", id: quest._id, title: quest.title || quest.description || "Untitled" })}
                   disabled={closingId === quest._id || deletingId === quest._id}
                 >
@@ -265,7 +274,7 @@ export default function QuestsTab() {
               {(draft || completed) && (
                 <button
                   title="Delete quest"
-                  className="px-2 py-1.5 text-xs bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-1.5 text-xs bg-red-600/20 text-[#e4545b] rounded-lg hover:bg-red-600/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setPendingAction({ type: "delete", id: quest._id, title: quest.title || quest.description || "Untitled" })}
                   disabled={deletingId === quest._id || closingId === quest._id}
                 >
@@ -275,9 +284,9 @@ export default function QuestsTab() {
             </div>
 
             {scheduled ? (
-              <div className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded self-start bg-black/40 border border-purple-500/30">
-                <Clock className="w-3 h-3 text-purple-400 animate-pulse" />
-                <span className="text-purple-300 font-mono font-semibold">{countdowns[quest._id] || "Loading..."}</span>
+              <div className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded self-start bg-white border border-purple-500/30">
+                <Clock className="w-3 h-3 text-[#8a3ffc] animate-pulse" />
+                <span className="text-[#8a3ffc] font-mono font-semibold">{countdowns[quest._id] || "Loading..."}</span>
               </div>
             ) : (
               <span className={`px-2 py-0.5 text-[10px] rounded self-start ${statusColor}`}>{status}</span>
@@ -295,27 +304,27 @@ export default function QuestsTab() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <h1 className="text-2xl md:text-3xl font-bold text-white text-left">Quests</h1>
-            <p className="text-white/60 text-lg text-left">Manage and track your community quests</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-[#1c2533] text-left">Quests</h1>
+            <p className="text-[#69728a] text-lg text-left">Manage and track your community quests</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="text-white/60 hover:text-white"
-            onClick={fetchQuests}
+            className="text-[#69728a] hover:text-[#1c2533]"
+            onClick={() => fetchQuests()}
             disabled={loading}
           >
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
 
-        <div className="flex border-b border-white/20 gap-4 pb-2 overflow-x-auto">
+        <div className="flex border-b border-[rgba(28,37,51,0.12)] gap-4 pb-2 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as typeof activeTab)}
               className={`font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab.id ? "border-b-2 border-purple-500 text-white" : "text-white/60 hover:text-white"
+                activeTab === tab.id ? "border-b-2 border-purple-500 text-[#1c2533]" : "text-[#69728a] hover:text-[#1c2533]"
               }`}
             >
               {tab.label} ({tab.count})
@@ -326,25 +335,22 @@ export default function QuestsTab() {
         {isUser && <CreatorRewardsBanner />}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-white/60">
-            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-            Loading quests...
-          </div>
+          <StudioLoader message="Loading quests…" />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {activeTab === "all" && (
               <Link
                 href={createUrl}
-                className="w-full p-6 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-purple-500 rounded-2xl bg-black hover:bg-black/80 hover:border-[#8B3EFE] transition cursor-pointer no-underline"
+                className="w-full p-6 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-purple-500 rounded-2xl bg-white hover:bg-[#f4f1fc] hover:border-[#8B3EFE] transition cursor-pointer no-underline"
               >
-                <div className="w-12 h-12 flex items-center justify-center rounded-full bg-purple-500/20 text-purple-400 text-2xl font-bold">+</div>
-                <p className="font-semibold text-white text-center text-lg">Create New Quest</p>
-                <p className="text-white/60 text-center text-sm">Launch a New Quest now</p>
+                <div className="w-12 h-12 flex items-center justify-center rounded-full bg-purple-500/20 text-[#8a3ffc] text-2xl font-bold">+</div>
+                <p className="font-semibold text-[#1c2533] text-center text-lg">Create New Quest</p>
+                <p className="text-[#69728a] text-center text-sm">Launch a New Quest now</p>
               </Link>
             )}
 
             {filteredQuests.length === 0 ? (
-              <p className="text-white/60 col-span-full">No quests found.</p>
+              <p className="text-[#69728a] col-span-full">No quests found.</p>
             ) : (
               filteredQuests.map((q) => renderQuestCard(q))
             )}
@@ -353,26 +359,26 @@ export default function QuestsTab() {
       </div>
 
       <Dialog open={!!pendingAction} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
-        <DialogContent className="bg-gray-900 border border-white/10 text-white rounded-2xl max-w-md">
+        <DialogContent className="bg-white border border-[rgba(28,37,51,0.12)] text-[#1c2533] rounded-2xl max-w-md">
           <DialogHeader>
             <DialogTitle
               className={
                 pendingAction?.type === "delete"
-                  ? "text-red-400"
-                  : "text-yellow-400"
+                  ? "text-[#e4545b]"
+                  : "text-[#c27c00]"
               }
             >
               {pendingAction?.type === "delete" ? "Delete Quest" : "Close Quest"}
             </DialogTitle>
-            <DialogDescription className="text-white/60 pt-1">
+            <DialogDescription className="text-[#69728a] pt-1">
               {pendingAction?.type === "delete"
-                ? (<>This will <span className="text-red-400 font-semibold">permanently delete</span> <span className="text-white font-medium">"{pendingAction?.title}"</span>. This action cannot be undone.</>)
-                : (<>This will close <span className="text-white font-medium">\"{pendingAction?.title}\"</span>. It will no longer accept submissions.</>)
+                ? (<>This will <span className="text-[#e4545b] font-semibold">permanently delete</span> <span className="text-[#1c2533] font-medium">"{pendingAction?.title}"</span>. This action cannot be undone.</>)
+                : (<>This will close <span className="text-[#1c2533] font-medium">\"{pendingAction?.title}\"</span>. It will no longer accept submissions.</>)
               }
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 mt-2">
-            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => setPendingAction(null)}>
+            <Button variant="ghost" className="text-[#69728a] hover:text-[#1c2533]" onClick={() => setPendingAction(null)}>
               Cancel
             </Button>
             <Button

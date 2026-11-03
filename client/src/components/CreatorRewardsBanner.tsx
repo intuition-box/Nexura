@@ -28,7 +28,7 @@ export default function CreatorRewardsBanner() {
               </span>
             </div>
             <div className="flex flex-col gap-1 items-start">
-              <h3 className="font-bold text-[#e5e2e1] text-[16px]">
+              <h3 className="font-bold text-[#1c2533] text-[16px]">
                 Earn +2,000 XP for every published quest
               </h3>
               <p className="font-medium text-[#968da1] text-[14px]">
@@ -41,14 +41,14 @@ export default function CreatorRewardsBanner() {
         {/* Right Section (Bonus XP) */}
         <div className="bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] border-solid h-[89px] rounded-[12px] w-[97px] flex flex-col items-center justify-center relative z-10 shrink-0">
           <div className="flex gap-[3px] items-center">
-            <span className="font-black text-[#ebdcff] text-[20px] text-center">
+            <span className="font-black text-[#1c2533] text-[20px] text-center">
               2K
             </span>
             <div className="relative shrink-0 w-[20px] h-[20px]">
               <img alt="XP Icon" className="absolute inset-0 max-w-none object-cover pointer-events-none w-full h-full" src={imgXpIconFill72X3} />
             </div>
           </div>
-          <span className="font-semibold text-[12px] text-[rgba(255,255,255,0.7)] text-center tracking-[-0.5px] uppercase mt-1">
+          <span className="font-semibold text-[12px] text-[#3d485c] text-center tracking-[-0.5px] uppercase mt-1">
             Bonus XP
           </span>
         </div>

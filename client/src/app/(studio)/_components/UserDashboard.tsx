@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import {
   Dialog,
   DialogContent,
@@ -39,9 +40,10 @@ export default function userDashboard() {
     });
   };
 
-  const fetchQuests = async () => {
+  /** `quiet` refreshes in the background, keeping the list if the request fails. */
+  const fetchQuests = async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const res = await apiRequest<{ pendingTasks?: TASKSS[] }>({
         endpoint: `${apiPrefix}/quest-submissions`,
         method: "GET",
@@ -49,12 +51,15 @@ export default function userDashboard() {
       const pendingTasks = res?.pendingTasks ?? [];
       setQuestTasks(pendingTasks.filter((task) => task.page === "user" || task.page === "quest"));
     } catch (err) {
+      if (quiet) return;
       console.error("Failed to fetch quests:", err);
       setQuestTasks([]);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
+
+  useLiveRefresh(() => fetchQuests(true), undefined, !!session?.hub);
 
   useEffect(() => {
     // Only fetch quests if user has a hub
@@ -110,7 +115,7 @@ export default function userDashboard() {
         toggleUserSelection={toggleUserSelection}
         handleView={handleView}
         handleAction={handleAction}
-        onRefresh={fetchQuests}
+        onRefresh={() => fetchQuests()}
       />
 
       <Dialog open={viewModalOpen} onOpenChange={setViewModalOpen}>
@@ -120,7 +125,7 @@ export default function userDashboard() {
             <DialogDescription>{selectedTask?.taskType}</DialogDescription>
           </DialogHeader>
 
-          <div className="text-white">{selectedTask?.submissionLink}</div>
+          <div className="text-[#1c2533]">{selectedTask?.submissionLink}</div>
 
           <div className="flex gap-2 mt-4">
             <Button

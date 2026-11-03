@@ -3,7 +3,7 @@
 export default function AnimatedBackground({ className }: { className?: string }) {
   return (
     <div
-      className={`absolute inset-0 z-0 pointer-events-none ${className}`}
+      className={`app-animated-bg absolute inset-0 z-0 pointer-events-none ${className}`}
       style={{
         background: `
           radial-gradient(circle at 80% 10%, rgba(60, 0, 100, 0.25) 0%, transparent 45%),

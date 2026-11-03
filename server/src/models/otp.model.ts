@@ -22,7 +22,7 @@ const OTPSchema = new Schema({
   },
   page: {
     type: String,
-    enum: ["user", "project"],
+    enum: ["user", "project", "platform"],
     required: true
   },
   expiresAt: {

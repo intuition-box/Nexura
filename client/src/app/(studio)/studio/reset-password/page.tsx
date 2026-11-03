@@ -283,7 +283,7 @@ function ResetHubPasswordForm() {
 
           <button
             type="button"
-            onClick={() => router.push(isUserHub ? "/studio/users/user-signin" : "/projects/create/signin-to-hub")}
+            onClick={() => router.push(isUserHub ? "/studio/users/user-signin" : "/studio/sign-in")}
             className="mt-[16px] text-[14px] text-[rgba(255,255,255,0.6)] hover:text-white transition-colors"
           >
             Back to {isUserHub ? "user" : "studio"} sign in

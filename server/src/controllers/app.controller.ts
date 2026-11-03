@@ -9,12 +9,15 @@ import { hub } from "@/models/hub.model";
 import { TNSProvider } from "@samoris/tns-sdk";
 import { tokenModel } from "@/models/tokenModel";
 import {
+  getPublicClient,
   performIntuitionOnchainAction,
   serverWalletAddress,
 } from "@/utils/account";
 import {
   BOT_TOKEN,
   network,
+  PROXY_FEE_CONTRACT,
+  STREAK_RESTORE_CONTRACT,
   STUDIO_FEE_CONTRACT,
   THIRD_PARTY_API_KEY,
 } from "@/utils/env.utils";
@@ -43,8 +46,11 @@ import {
   miniQuestCompleted,
   questCompleted,
 } from "@/models/questsCompleted.models";
-import { atomIds, GRAPHQL_API_URL, RELIC_CONTRACT } from "@/utils/constants";
+import { atomIds, GRAPHQL_API_URL, NexonsAddress, RELIC_CONTRACT } from "@/utils/constants";
+import { useTxOnce } from "@/models/usedTx.model";
+import { redeemLinkTicket } from "@/models/linkTicket.model";
 import { GraphQLClient } from "graphql-request";
+import { resilientFetch } from "@/utils/resilience";
 import { checksumAddress, formatEther, parseAbi, parseEther, type Address } from "viem";
 import { campaign, campaignCompleted } from "@/models/campaign.model";
 import { dailySignIn } from "@/models/dailySignIn.model";
@@ -53,6 +59,7 @@ import {
   updateLevel,
   getNFT,
   getAmountPaid,
+	submissionProblem,
 } from "@/utils/utils";
 import chain from "@/utils/chain.utils";
 import { evaluateDailyStreak } from "@/utils/streak.utils";
@@ -60,8 +67,15 @@ import { lesson, lessonCompleted } from "@/models/lesson.model";
 import { xpLog } from "@/models/xpLog.model";
 import { formatDate } from "date-fns";
 import { ensureQuestStarted } from "./quest.controller";
+import { claimableStreakMilestone } from "@/utils/streakMilestones";
 
-const client = new GraphQLClient(GRAPHQL_API_URL);
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
+const TX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const NEXON_LEVEL_XP = [1000, 3000, 6000, 10000, 15000, 20000, 30000, 40000, 50000, 65000];
+
+// Time limit + retries on brief failures (see resilience)
+const client = new GraphQLClient(GRAPHQL_API_URL, { fetch: resilientFetch });
 
 export const home = async (req: GlobalRequest, res: GlobalResponse) => {
   res.send("hi!");
@@ -451,7 +465,12 @@ export const validateTrustNameTask = async (
     }
 
     if (campaignQuestData) {
-      parentId = parentId || campaignQuestData.campaign?.toString();
+      const task = await campaignTaskFor(id, campaignIdFromBody, ["trust-name"]);
+      if (typeof task === "string") {
+        res.status(BAD_REQUEST).json({ error: task });
+        return;
+      }
+      parentId = String(task.campaign);
       isCampaign = true;
     } else if (miniQuestData) {
       parentId = parentId || miniQuestData.quest?.toString();
@@ -539,7 +558,11 @@ export const allowNexonsMint = async (
   try {
     const { id } = req;
 
-    const level = req.body.level;
+    const level = Number(req.body.level);
+    if (!Number.isInteger(level) || !NexonsAddress[String(level)]) {
+      res.status(BAD_REQUEST).json({ error: "send a valid level" });
+      return;
+    }
 
     const minter = await user.findById(id).lean();
     if (!minter) {
@@ -549,6 +572,11 @@ export const allowNexonsMint = async (
 
     if (minter.badges.includes(level)) {
       res.status(OK).json({ message: "already minted" });
+      return;
+    }
+
+    if ((minter.xp ?? 0) < NEXON_LEVEL_XP[level - 1]!) {
+      res.status(FORBIDDEN).json({ error: "you haven't reached this level yet" });
       return;
     }
 
@@ -644,7 +672,21 @@ export const claimDepositXp = async (
       return;
     }
 
-    const { value, from } = await getAmountPaid(transactionHash);
+    if (typeof transactionHash !== "string" || !TX_HASH.test(transactionHash)) {
+      res.status(BAD_REQUEST).json({ error: "send a valid transaction hash" });
+      return;
+    }
+
+    const { value, from, to, success, blockTime } = await getAmountPaid(transactionHash);
+
+    if (!success || (PROXY_FEE_CONTRACT && to.toLowerCase() !== PROXY_FEE_CONTRACT.toLowerCase())) {
+      res.status(FORBIDDEN).json({ error: "that transaction isn't a claim deposit" });
+      return;
+    }
+    if (Date.now() - blockTime > TX_MAX_AGE_MS) {
+      res.status(FORBIDDEN).json({ error: "that deposit is too old to earn XP" });
+      return;
+    }
 
     if (Number(value) < 200) {
       res
@@ -667,7 +709,7 @@ export const claimDepositXp = async (
     }
 
     const date = new Date();
-    const exactDate = date.toISOString().split("T")[0];
+    const exactDate = date.toISOString().split("T")[0] as string;
 
     if (trustUser.dailyTrustXpDate === exactDate) {
       res
@@ -676,10 +718,27 @@ export const claimDepositXp = async (
       return;
     }
 
+    if (!(await useTxOnce(transactionHash, "deposit-xp", trustUser._id))) {
+      res.status(FORBIDDEN).json({ error: "that deposit has already earned XP" });
+      return;
+    }
+
     const depositXp = 500;
 
-    trustUser.dailyTrustXpDate = exactDate as string;
-    trustUser.xp += depositXp;
+    const paid = await user.findOneAndUpdate(
+      { _id: trustUser._id, dailyTrustXpDate: { $ne: exactDate } },
+      { $set: { dailyTrustXpDate: exactDate }, $inc: { xp: depositXp } },
+      { new: true }
+    );
+    if (!paid) {
+      res
+        .status(OK)
+        .json({ message: "xp for claim already made today", success: true });
+      return;
+    }
+
+    paid.level = await updateLevel(paid);
+    await paid.save();
 
     await xpLog.create({
       address: trustUser.address,
@@ -688,8 +747,6 @@ export const claimDepositXp = async (
       status: "success",
       type: "deposit-xp",
     });
-
-    await trustUser.save();
 
     res.status(OK).json({ message: "xp claim successful", success: true });
   } catch (error) {
@@ -1069,8 +1126,13 @@ export const updateSubmission = async (
       res.status(BAD_REQUEST).json({ error: "send the required details" });
       return;
     }
+    const linkProblem = submissionProblem(submissionLink);
+    if (linkProblem) {
+      res.status(BAD_REQUEST).json({ error: linkProblem });
+      return;
+    }
 
-    const task = await submission.findOne({ user: userId, miniQuestId });
+    const task = await submission.findOne({ user: userId, miniQuestId: String(miniQuestId) });
     if (!task) {
       res
         .status(BAD_REQUEST)
@@ -1243,7 +1305,7 @@ export const referralInfo = async (req: GlobalRequest, res: GlobalResponse) => {
 
 export const updateBadge = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { level }: { level: number } = req.body;
+    const level = Number(req.body.level);
     const userToUpdate = await user.findById(req.id);
 
     if (isNaN(level)) {
@@ -1256,14 +1318,32 @@ export const updateBadge = async (req: GlobalRequest, res: GlobalResponse) => {
       return;
     }
 
-    if (!userToUpdate.badges.includes(level)) {
-      userToUpdate.badges.push(level);
-      userToUpdate.noOfMints = (userToUpdate.noOfMints ?? 0) + 1;
-
-      await userToUpdate.save();
-
-      res.status(OK).json({ message: "badge updated" });
+    const nexon = NexonsAddress[String(level)];
+    if (!Number.isInteger(level) || !nexon) {
+      res.status(BAD_REQUEST).json({ error: "send a valid level" });
       return;
+    }
+
+    if (!userToUpdate.badges.includes(level)) {
+      const minted = await getPublicClient().readContract({
+        address: nexon,
+        abi: parseAbi(["function mintedUsers(address) view returns (bool)"]),
+        functionName: "mintedUsers",
+        args: [checksumAddress(userToUpdate.address as Address)],
+      }).catch(() => false);
+      if (!minted) {
+        res.status(BAD_REQUEST).json({ error: "this Nexon hasn't been minted from your wallet yet" });
+        return;
+      }
+
+      const added = await user.updateOne(
+        { _id: userToUpdate._id, badges: { $ne: level } },
+        { $push: { badges: level }, $inc: { noOfMints: 1 } }
+      );
+      if (added.modifiedCount) {
+        res.status(OK).json({ message: "badge updated" });
+        return;
+      }
     }
 
     res.status(BAD_REQUEST).json({ error: "user already has the badge" });
@@ -1448,9 +1528,23 @@ export const claimRelicReward = async (req: GlobalRequest, res: GlobalResponse) 
   }
 };
 
+/**
+ * The campaign task a check is about, read from the database: it must exist, belong to the campaign
+ * named in the request, and be one of the task types this check handles. Returns a reason otherwise.
+ */
+async function campaignTaskFor(taskId: unknown, campaignId: unknown, tags: string[]): Promise<any | string> {
+  if (typeof taskId !== "string" || !/^[a-f0-9]{24}$/i.test(taskId)) return "send a valid task id";
+  const task = await campaignQuest.findById(taskId).select("tag link campaign").lean() as any;
+  if (!task) return "task not found";
+  if (campaignId && String(task.campaign) !== String(campaignId)) return "that task isn't part of this campaign";
+  if (!tags.includes(String(task.tag))) return "this check doesn't apply to that task";
+  return task;
+}
+
 export const validateAtlasTask = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { id, questId, tag, page } = req.body;
+    const { id, questId, page } = req.body;
+    let tag: string = req.body.tag;
     if (!questId || !id || !tag) {
       res
         .status(BAD_REQUEST)
@@ -1459,6 +1553,16 @@ export const validateAtlasTask = async (req: GlobalRequest, res: GlobalResponse)
     }
 
     const allowedTags = ["i-follow", "i-collaborated", "i-trust", "i-interact"];
+    // On a campaign task the check comes from the task itself, never from the request
+    // (otherwise an easy check could pass for a harder task)
+    if (page === "campaign") {
+      const task = await campaignTaskFor(id, questId, allowedTags);
+      if (typeof task === "string") {
+        res.status(BAD_REQUEST).json({ error: task });
+        return;
+      }
+      tag = String(task.tag);
+    }
     if (!allowedTags.includes(tag)) {
       res.status(BAD_REQUEST).json({ error: "invalid tag" });
       return;
@@ -1623,11 +1727,27 @@ export const validatePortalTask = async (
 ) => {
   try {
     const {
-      termId,
       id,
       questId,
       page,
     }: { page: string; termId: string; id: string; questId: string } = req.body;
+    let termId: string = req.body.termId;
+
+    // On a campaign task the term to check comes from the task itself, never from the request
+    // (otherwise a stake on any term would pass)
+    if (page === "campaign") {
+      const task = await campaignTaskFor(id, questId, ["portal"]);
+      if (typeof task === "string") {
+        res.status(BAD_REQUEST).json({ error: task });
+        return;
+      }
+      const fromLink = String(task.link ?? "").split("?")[0]!.replace(/\/+$/, "").split("/").pop();
+      if (!fromLink) {
+        res.status(BAD_REQUEST).json({ error: "this task has no term to check" });
+        return;
+      }
+      termId = fromLink;
+    }
 
     const userToCheck = await user.findById(req.id);
     if (!userToCheck) {
@@ -1823,22 +1943,29 @@ export const updateClaims = async (req: GlobalRequest, res: GlobalResponse) => {
       return;
     }
 
-    const { from } = await getAmountPaid(transactionHash);
+    if (typeof transactionHash !== "string" || !TX_HASH.test(transactionHash)) {
+      res.status(BAD_REQUEST).json({ error: "send a valid transaction hash" });
+      return;
+    }
 
-    if (from.toLowerCase() !== (userToUpdate.address ?? "").toLowerCase()) {
+    const { from, success } = await getAmountPaid(transactionHash);
+
+    if (!success || from.toLowerCase() !== (userToUpdate.address ?? "").toLowerCase()) {
       res
         .status(FORBIDDEN)
         .json({ error: "transaction must be from the user's address" });
       return;
     }
 
-    if (action === "buy") {
-      userToUpdate.noOfClaims += 1;
-    } else {
-      userToUpdate.claimsSold += 1;
+    if (!(await useTxOnce(transactionHash, "claims-trade", userToUpdate._id))) {
+      res.status(OK).json({ message: "user claims already updated" });
+      return;
     }
 
-    await userToUpdate.save();
+    await user.updateOne(
+      { _id: userToUpdate._id },
+      { $inc: action === "buy" ? { noOfClaims: 1 } : { claimsSold: 1 } }
+    );
 
     res.status(OK).json({ message: "user claims updated successfully" });
   } catch (error) {
@@ -1871,17 +1998,25 @@ export const updateClaimsCreated = async (
       return;
     }
 
-    const { from } = await getAmountPaid(txHash);
-    if (from.toLowerCase() !== userToUpdate.address) {
+    if (typeof txHash !== "string" || !TX_HASH.test(txHash)) {
+      res.status(BAD_REQUEST).json({ error: "send a valid transaction hash" });
+      return;
+    }
+
+    const { from, success } = await getAmountPaid(txHash);
+    if (!success || from.toLowerCase() !== userToUpdate.address) {
       res
         .status(UNAUTHORIZED)
         .json({ error: "tx hash must be from authenticated user" });
       return;
     }
 
-    userToUpdate.noOfClaimsCreated += 1;
+    if (!(await useTxOnce(txHash, "claims-created", userToUpdate._id))) {
+      res.status(OK).json({ message: "no of claims created already tracked" });
+      return;
+    }
 
-    await userToUpdate.save();
+    await user.updateOne({ _id: userToUpdate._id }, { $inc: { noOfClaimsCreated: 1 } });
 
     res.status(OK).json({ message: "no of claims created tracked" });
   } catch (error) {
@@ -2281,29 +2416,25 @@ export const claimStreakReward = async (req: GlobalRequest, res: GlobalResponse)
 
     let dailyXpReward = await dailySignIn.findOne({ user: req.id, month });
 
-    // Check milestones from HIGHEST to LOWEST so users at higher streaks
-    // (e.g. day 15 who never claimed day 7) get the correct reward on first claim.
-    if (currentStreak >= 90 && currentDayCount < 90) {
-      streakReward = 20000;
-      dayCount = 90;
-    } else if (currentStreak >= 60 && currentDayCount < 60) {
-      streakReward = 10000;
-      dayCount = 60;
-    } else if (currentStreak >= 45 && currentDayCount < 45) {
-      streakReward = 5000;
-      dayCount = 45;
-    } else if (currentStreak >= 30 && currentDayCount < 30) {
-      streakReward = 2500;
-      dayCount = 30;
-    } else if (currentStreak >= 15 && currentDayCount < 15) {
-      streakReward = 1000;
-      dayCount = 15;
-    } else if (currentStreak >= 7 && currentDayCount < 7) {
-      streakReward = 500;
-      dayCount = 7;
+    const milestone = claimableStreakMilestone(currentStreak, currentDayCount);
+    if (milestone) {
+      streakReward = milestone.xp;
+      dayCount = milestone.day;
     }
 
     if (streakReward === 0) {
+      res
+        .status(BAD_REQUEST)
+        .json({ error: "streak reward not available to claim" });
+      return;
+    }
+
+    const paid = await user.findOneAndUpdate(
+      { _id: req.id, $or: [{ dayCount: { $lt: dayCount } }, { dayCount: null }] },
+      { $inc: { xp: streakReward }, $set: { dayCount } },
+      { new: true }
+    );
+    if (!paid) {
       res
         .status(BAD_REQUEST)
         .json({ error: "streak reward not available to claim" });
@@ -2324,11 +2455,6 @@ export const claimStreakReward = async (req: GlobalRequest, res: GlobalResponse)
       dailyXpReward.xpClaimedThisMonth += streakReward;
       await dailyXpReward.save();
     }
-
-    await user.findByIdAndUpdate(req.id, {
-      $inc: { xp: streakReward },
-      $set: { dayCount },
-    });
 
     await xpLog.create({
       amount: streakReward,
@@ -2465,6 +2591,15 @@ export const performDailySignIn = async (
       return;
     }
 
+    const claimedToday = await user.updateOne(
+      { _id: userId, lastSignInDate: { $ne: onlyDate } },
+      { $set: { lastSignInDate: onlyDate } }
+    );
+    if (!claimedToday.modifiedCount) {
+      res.status(BAD_REQUEST).json({ error: "Already signed in today" });
+      return;
+    }
+
     if (lastSignIn === yesterdayDate) {
       userExists.streak += 1;
     } else {
@@ -2542,7 +2677,12 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
       return;
     }
 
-    const { from, timestamp, value } = await getAmountPaid(txHash);
+    if (!TX_HASH.test(txHash)) {
+      res.status(BAD_REQUEST).json({ error: "send a valid transaction hash" });
+      return;
+    }
+
+    const { from, to, success, timestamp, value } = await getAmountPaid(txHash);
 
     if (
       checksumAddress(from as Address) !== checksumAddress(req.user.address)
@@ -2550,6 +2690,11 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
       res
         .status(BAD_REQUEST)
         .json({ error: "transaction must be from the user's address" });
+      return;
+    }
+
+    if (!success || to.toLowerCase() !== STREAK_RESTORE_CONTRACT.toLowerCase()) {
+      res.status(BAD_REQUEST).json({ error: "that transaction isn't a streak-restore payment" });
       return;
     }
 
@@ -2572,6 +2717,16 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
       res
         .status(BAD_REQUEST)
         .json({ error: "transaction must be from the current day" });
+      return;
+    }
+
+    if (!(req.user.streakToRestore > 0)) {
+      res.status(BAD_REQUEST).json({ error: "there's no streak to restore" });
+      return;
+    }
+
+    if (!(await useTxOnce(txHash, "restore-streak", req.id))) {
+      res.status(BAD_REQUEST).json({ error: "that payment has already been used" });
       return;
     }
 
@@ -2928,8 +3083,8 @@ export const claimReferreralReward = async (
   try {
     const userId = req.id!;
 
-    const { tier }: { tier: number } = req.body;
-    if (!tier) {
+    const tier = Number(req.body.tier);
+    if (![1, 2, 3].includes(tier)) {
       res.status(BAD_REQUEST).json({ error: "tier is required" });
       return;
     }
@@ -2951,7 +3106,7 @@ export const claimReferreralReward = async (
       return;
     }
 
-    if (referrer.tier === tier) {
+    if ((referrer.tier ?? 0) >= tier) {
       res
         .status(BAD_REQUEST)
         .json({ error: "user is already in the referral tier" });
@@ -2973,20 +3128,22 @@ export const claimReferreralReward = async (
     let xpGiven = 0;
 
     if (referrer.tier === 0 && tier === 2) {
-      referrer.xp += 5000;
       xpGiven = 5000;
     } else if (referrer.tier === 0 && tier === 3) {
-      referrer.xp += 10000;
       xpGiven = 10000;
     } else {
-      referrer.xp += xpByTier;
       xpGiven = xpByTier;
     }
 
-    referrer.tier = tier;
-
-    if (tier === 3) {
-      referrer.refRewardClaimed = true;
+    const fromTier = referrer.tier ? { tier: referrer.tier } : { tier: { $in: [0, null] } };
+    const paid = await user.findOneAndUpdate(
+      { _id: referrer._id, refRewardClaimed: { $ne: true }, ...fromTier },
+      { $set: { tier, ...(tier === 3 ? { refRewardClaimed: true } : {}) }, $inc: { xp: xpGiven } },
+      { new: true }
+    );
+    if (!paid) {
+      res.status(BAD_REQUEST).json({ error: "referrer reward claimed" });
+      return;
     }
 
     await xpLog.create({
@@ -2996,8 +3153,6 @@ export const claimReferreralReward = async (
       status: "success",
       type: "referral",
     });
-
-    await referrer.save();
 
     res.status(OK).json({ message: "referral reward claimed!" });
   } catch (error) {
@@ -3047,7 +3202,9 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
   let quest: any | undefined = undefined;
 
   try {
-    const { tag, id: postId, questId, page } = req.body; // get task id and store hub x id, then remove hardcoded nexura id
+    const { questId, page } = req.body; // get task id and store hub x id, then remove hardcoded nexura id
+    let tag: string = req.body.tag;
+    let postId = req.body.id;
 
     const NEXURA_ID = "1983300499597393920";
     const NEXURA_USERNAME = "NexuraXYZ";
@@ -3063,7 +3220,35 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
         res.status(NOT_FOUND).json({ error: "quest id is invalid" });
         return;
       }
+      // On a campaign task, what to check and which post both come from the task itself, never from
+      // the request. Only likes and reposts of the task's own post are checked here; follow/comment
+      // tasks are reviewed by the project from the proof people submit.
+      if (!["like", "repost"].includes(String(quest.tag))) {
+        res.status(BAD_REQUEST).json({ error: "this task is reviewed by the project; submit your proof instead" });
+        return;
+      }
+      tag = String(quest.tag);
+      const linkedPost = String(quest.link ?? "").split("?")[0]!.replace(/\/+$/, "").split("/").pop();
+      if (!linkedPost || !/^\d+$/.test(linkedPost)) {
+        res.status(BAD_REQUEST).json({ error: "this task's link doesn't point to a post on X" });
+        return;
+      }
+      postId = linkedPost;
     }
+
+    /** A passed check on a campaign task is recorded, so the task can then be completed (and only then). */
+    const verified = async () => {
+      if (page !== "quest" && quest) {
+        const existing = await campaignQuestCompleted.findOne({ user: req.id, campaignQuest: quest._id });
+        if (!existing) {
+          await campaignQuestCompleted.create({ user: req.id, campaignQuest: quest._id, campaign: quest.campaign, done: false, status: "approved" });
+        } else if (!existing.done) {
+          existing.status = "approved";
+          await existing.save();
+        }
+      }
+      res.status(OK).json({ message: "task verified", success: true });
+    };
 
     const API_URL = "https://api.twitterapi.io/twitter";
 
@@ -3081,7 +3266,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           (follower: { id: string }) => follower.id === xId,
         );
         if (followFound) {
-          res.status(OK).json({ message: "task verified", success: true });
+          await verified();
           return;
         }
 
@@ -3142,7 +3327,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           return;
         }
 
-        res.status(OK).json({ message: "task verified", success: true });
+        await verified();
         return;
       case "like":
         xClient = getXClient({ token: userToken.accessToken, auth: "oauth2" });
@@ -3168,7 +3353,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
 
         for await (const likedPost of likedPosts.users) {
           if (likedPost.id === postId) {
-            res.status(OK).json({ message: "task verified", success: true });
+            await verified();
             return;
           }
 
@@ -3194,7 +3379,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           (reposter: { id: string }) => reposter.id === xId,
         );
         if (repostFound) {
-          res.status(OK).json({ message: "task verified", success: true });
+          await verified();
           return;
         }
 
@@ -3253,7 +3438,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           return;
         }
 
-        res.status(OK).json({ message: "task verified", success: true });
+        await verified();
 
         return;
       case "comment":
@@ -3269,7 +3454,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           (reply: { author: { id: string } }) => reply.author.id === xId,
         );
         if (commentFound) {
-          res.status(OK).json({ message: "task verified", success: true });
+          await verified();
           return;
         }
 
@@ -3330,7 +3515,7 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
           return;
         }
 
-        res.status(OK).json({ message: "task verified", success: true });
+        await verified();
         return;
       default:
         res.status(BAD_REQUEST).json({ error: "invalid task tag" });
@@ -3355,7 +3540,9 @@ export const checkXTask = async (req: GlobalRequest, res: GlobalResponse) => {
 export const updateX = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { id } = req;
-    const { x_id, username } = req.query as { x_id: string; username: string };
+    const linked = await redeemLinkTicket("x", req.query.ticket);
+    const x_id = linked?.accountId;
+    const username = linked?.username;
 
     if (!x_id || !username) {
       res
@@ -3445,12 +3632,11 @@ export const updateDiscord = async (
 ) => {
   try {
     const { id } = req;
-    const { discord_id, username } = req.query as {
-      discord_id: string;
-      username: string;
-    };
+    const linked = await redeemLinkTicket("discord", req.query.ticket);
+    const discord_id = linked?.accountId;
+    const username = linked?.username;
 
-    if (!discord_id || !username) {
+    if (!discord_id || !/^\d{5,25}$/.test(discord_id) || !username) {
       res
         .status(BAD_REQUEST)
         .json({ error: "authorization was not successful" });
@@ -3686,7 +3872,8 @@ export const checkDiscordTask = async (
     };
 
     const passDiscordTask = async (message = "validated") => {
-      await setDiscordTaskStatus(isCampaign ? "pending" : "approved");
+      // "approved" = checked and passed; "pending" is only for proof waiting on a hub's review
+      await setDiscordTaskStatus("approved");
       // Main-app quest path: claim-mini-quest requires the overall quest-
       // completion record to exist (otherwise claimQuest fails). Mirror
       // what validateTrustNameTask does for non-campaign tasks.

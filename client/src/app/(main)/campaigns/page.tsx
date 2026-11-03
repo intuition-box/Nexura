@@ -31,6 +31,8 @@ interface HubInfo {
 }
 
 interface Campaign {
+  /** What the reward pool pays in (TRUST, USDC, …); older campaigns have none and pay TRUST */
+  rewardAsset?: { token?: string; network?: string };
   _id: string;
   title: string;
   description: string;
@@ -318,9 +320,9 @@ export default function Campaigns() {
               <span className="text-gray-500">Reward:</span>
               <span className="text-white flex items-center gap-1 text-right">
                 {hasTrustReward && Number(campaign.reward?.xp) > 0
-                  ? `${trustReward} TRUST + ${campaign.reward.xp} XP`
+                  ? `${trustReward} ${campaign.rewardAsset?.token || "TRUST"} + ${campaign.reward.xp} XP`
                   : hasTrustReward
-                  ? `${trustReward} TRUST`
+                  ? `${trustReward} ${campaign.rewardAsset?.token || "TRUST"}`
                   : `${campaign.reward.xp} XP`}
               </span>
             </div>
@@ -330,7 +332,7 @@ export default function Campaigns() {
             <div className="flex flex-row justify-between text-xs items-center">
               <span className="text-gray-500">Reward Pool:</span>
               <span className="text-white flex items-center gap-1 text-right">
-                {campaign.reward.pool} TRUST (FCFS)
+                {campaign.reward.pool} {campaign.rewardAsset?.token || "TRUST"} (FCFS)
               </span>
             </div>
           )}

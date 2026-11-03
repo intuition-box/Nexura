@@ -3829,3 +3829,49 @@ body {
   animation: dapps-marquee 25s linear infinite;
   will-change: transform;
 }
+/* Studio page entrance: CSS only, so a page never stays hidden if scripts load slowly or fail */
+@keyframes studio-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.studio-page-enter { animation: studio-page-enter 0.3s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .studio-page-enter { animation: none; } }
+
+/* Our own show/hide button replaces the browser's password reveal eye */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear { display: none; }
+
+body.nexura-studio-light { background: #f7f5ff; }
+body.nexura-studio-light .app-animated-bg { display: none; }
+body.nexura-studio-light .app-header {
+  background: #f7f5ff;
+  border-bottom: 1px solid rgba(28, 37, 51, 0.09);
+}
+body.nexura-studio-light [data-sidebar="sidebar"] {
+  background: #f5f4fd !important;
+  color: #232a43;
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+}
+body.nexura-studio-light [data-sidebar="content"] {
+  background: transparent !important;
+  backdrop-filter: none;
+}
+body.nexura-studio-light [data-sidebar="sidebar"] .border-border\/40 { border-color: rgba(0, 0, 0, 0.12); }
+body.nexura-studio-light [data-sidebar="sidebar"] img { filter: brightness(0) opacity(0.78); }
+body.nexura-studio-light [data-sidebar="sidebar"] .text-white,
+body.nexura-studio-light [data-sidebar="menu-button"] { color: #232a43 !important; }
+body.nexura-studio-light [data-sidebar="sidebar"] .hover\:bg-gray-700:hover,
+body.nexura-studio-light [data-sidebar="menu-button"]:hover { background: #e7e8fc !important; }
+body.nexura-studio-light [data-sidebar="menu-button"].nav-studio-active {
+  color: #8b3efe !important;
+  background: #e7e8fc !important;
+}
+body.nexura-studio-light .app-header .glass {
+  background: #fff !important;
+  border: 1.25px solid rgba(28, 37, 51, 0.15) !important;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.08);
+  backdrop-filter: none;
+}
+body.nexura-studio-light .app-header .glass .text-white { color: #1c2533 !important; }
+body.nexura-studio-light .app-header .glass .text-white\/50 { color: #69728a !important; }
+body.nexura-studio-light .app-header .glass .bg-gradient-to-br .text-white { color: #fff !important; }

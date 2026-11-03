@@ -1,4 +1,5 @@
 import { BACKEND_URL } from "./constants";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 export const API_URL = BACKEND_URL;
 
@@ -45,7 +46,7 @@ export const apiRequest = async <T = any>({ method, endpoint, data, formData }: 
   };
   if (!formData) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(getApiUrl(endpoint), {
+  const res = await resilientFetch(getApiUrl(endpoint), {
     method,
     headers,
     body: formData ?? (data ? JSON.stringify(data) : undefined),

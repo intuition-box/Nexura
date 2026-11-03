@@ -28,9 +28,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       location.startsWith("/studio/reset-password");
 
     document.body.classList.toggle("studio-theme", isStudioRoute);
+    document.body.classList.toggle("nexura-studio-light", location === "/nexura-studio");
 
     return () => {
-      document.body.classList.remove("studio-theme");
+      document.body.classList.remove("studio-theme", "nexura-studio-light");
     };
   }, [location]);
 

@@ -24,6 +24,8 @@ interface CampaignCardProps {
     pool?: string | number;
   };
   totalTrustAvailable?: number;
+  /** What the reward pool pays in (TRUST, USDC, …); older campaigns have none and pay TRUST */
+  rewardAsset?: { token?: string; network?: string };
   _id?: string;
   from?: string;
 }
@@ -40,9 +42,11 @@ export default function CampaignCard({
   isLive = true,
   reward,
   totalTrustAvailable,
+  rewardAsset,
   _id,
   from,
 }: CampaignCardProps) {
+  const rewardToken = rewardAsset?.token || "TRUST";
   const router = useRouter();
 
   const handleClick = () => {
@@ -240,9 +244,9 @@ const formatDuration = (
             <span className="text-white flex items-center gap-1 text-right">
               {hasTrustReward &&
               Number(reward?.xp) > 0
-                ? `${trustReward} TRUST + ${reward?.xp} XP`
+                ? `${trustReward} ${rewardToken} + ${reward?.xp} XP`
                 : hasTrustReward
-                ? `${trustReward} TRUST`
+                ? `${trustReward} ${rewardToken}`
                 : `${reward?.xp} XP`}
             </span>
           </div>

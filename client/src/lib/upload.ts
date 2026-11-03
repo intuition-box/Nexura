@@ -1,4 +1,5 @@
 import { buildUrl } from "./queryClient";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 export async function uploadFile(file: File, folder = "images") {
   try {
@@ -16,7 +17,7 @@ export async function uploadFile(file: File, folder = "images") {
       if (token) headers['Authorization'] = `Bearer ${token}`;
     } catch (e) { /* ignore */ }
 
-    const response = await fetch(buildUrl('/api/upload/avatar'), {
+    const response = await resilientFetch(buildUrl('/api/upload/avatar'), {
       method: 'POST',
       headers,
       body: JSON.stringify({ imageData: dataUrl, fileName: file.name })

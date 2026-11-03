@@ -172,6 +172,13 @@ const userSchema = new Schema({
 		type: Number,
 		default: 0,
 	},
+	// Rewards earned in other assets, keyed "<network>:<token>" (e.g. "base:USDC"), in exact decimals
+	// (see utils/rewardAssets.ts). TRUST keeps using trustEarned.
+	rewardsEarned: {
+		type: Map,
+		of: Schema.Types.Decimal128,
+		default: {},
+	},
 	dateJoined: {
 		type: String,
 		required: true,
@@ -192,6 +199,17 @@ const userSchema = new Schema({
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "campaign",
 	}],
+	legalConsent: {
+		version: { type: String },
+		ageConfirmed: { type: Boolean },
+		acceptedAt: { type: Date },
+	},
+	// Nexura score: average campaign retention across settled campaigns (see utils/retention.ts)
+	nexuraScore: {
+		rate: { type: Number, default: null },
+		campaigns: { type: Number, default: 0 },
+		updatedAt: { type: Date },
+	},
 }, { timestamps: true });
 
 userSchema.index({ xp: -1 });

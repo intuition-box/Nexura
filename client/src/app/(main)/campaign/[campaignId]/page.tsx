@@ -58,6 +58,18 @@ function resolveFeedbackMinChars(quest: Quest): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : FEEDBACK_MIN_FALLBACK;
 }
 
+/** The server's answer on whether this person can claim the TRUST reward (see server utils/campaignRewards.ts). */
+type RewardEligibility = {
+  hasTrustReward: boolean;
+  joined: boolean;
+  required: number | null;
+  current: number | null;
+  /** Eligible and places are still left (first come, first served) */
+  eligible: boolean;
+  claimed: boolean;
+  reason: string | null;
+};
+
 type HubInfo = {
   id?: string;
   name: string;
@@ -119,6 +131,10 @@ export default function CampaignEnvironment() {
   const [campaignHub, setCampaignHub] = useState("");
 
   const [questsCompleted, setQuestsCompleted] = useState(false);
+  // The person's progress towards the token reward, decided by the server
+  const [eligibility, setEligibility] = useState<RewardEligibility | null>(null);
+  // What the reward pool pays in (TRUST, USDC, …)
+  const [rewardToken, setRewardToken] = useState("TRUST");
   const [proofLinks, setProofLinks] = useState<Record<string, string>>({});
   const [expandedQuestId, setExpandedQuestId] = useState<string | null>(null);
 
@@ -187,6 +203,8 @@ export default function CampaignEnvironment() {
       setTotalTrustAvailable(res.totalTrustAvailable || 0);
       setMaxParticipants(res.maxParticipants || 0);
       setQuestsCompleted(res.campaignCompleted?.questsCompleted || false);
+      setEligibility(res.rewardEligibility ?? null);
+      setRewardToken(res.rewardAsset?.token || "TRUST");
       setCampaignHub(res.hub?.toString() || "");
       setCampaignReady(true);
 
@@ -336,7 +354,16 @@ export default function CampaignEnvironment() {
           //     throw new Error(`Kindly ${quest.tag !== "follow" ? quest.tag + " the post" : "follow the account"}`);
           //   }
           // } else
-          if (["join", "message", "join-discord", "message-discord", "acquire-role-discord", "send-message-discord"].includes(quest.tag)) {
+          // X likes and reposts are checked against X before the task can be completed
+          if (["like", "repost"].includes(quest.tag)) {
+            if (!user?.socialProfiles?.x?.connected) {
+              throw new Error("Connect your X account in your profile first.");
+            }
+            const { success } = await apiRequestV2("POST", "/api/check-x", { id, tag: quest.tag, questId: quest._id, page: "campaign" });
+            if (!success) {
+              throw new Error(quest.tag === "like" ? "Like the post on X first, then try again." : "Repost the post on X first, then try again.");
+            }
+          } else if (["join", "message", "join-discord", "message-discord", "acquire-role-discord", "send-message-discord"].includes(quest.tag)) {
             if (environment === "production" && !user?.socialProfiles.discord.connected) {
               throw new Error("discord not connected yet, go to profile to connect");
             }
@@ -413,8 +440,9 @@ export default function CampaignEnvironment() {
         throw new Error("Join this campaign before claiming rewards.");
       }
 
-      if (!questsCompleted) {
-        throw new Error("Kindly complete quests to claim reward");
+      // Claimable once every task is done (XP and completion) or once eligible for the TRUST reward
+      if (!questsCompleted && !eligibility?.eligible) {
+        throw new Error(eligibility?.reason ?? "Complete the campaign's tasks to claim.");
       }
 
       setShowProofModal(true);
@@ -428,15 +456,27 @@ export default function CampaignEnvironment() {
   const finalizeCampaignReward = async (txHash: string) => {
     console.log("[ACTION] finalizeCampaignReward", { txHash, campaignId, campaignAddress });
     try {
-      if (campaignAddress && trustClaimed < totalTrustAvailable) {
+      // The on-chain TRUST claim only works for eligible participants (the server allows their wallet)
+      if (campaignAddress && eligibility?.eligible && trustClaimed < totalTrustAvailable) {
         await claimCampaignOnchainReward({ campaignAddress, userId });
       }
 
       await apiRequestV2("POST", "/api/user/update-claims-created", { txHash });
 
-      await apiRequestV2("POST", `/api/campaign/complete-campaign?id=${campaignId}`);
+      const result = await apiRequestV2("POST", `/api/campaign/complete-campaign?id=${campaignId}`);
+      const xp = Number(result?.xpAwarded ?? 0);
+      const trust = result?.trust as (RewardEligibility & { awarded?: number }) | undefined;
+      const xpText = xp > 0 ? `You've been awarded ${xp} XP.` : "Your XP for completed stages has already been added.";
+      if (trust?.awarded) {
+        toast({ title: "Rewards claimed", description: `${xp > 0 ? `${xp} XP and ` : ""}${trust.awarded} ${rewardToken} have been added.` });
+      } else if (trust?.hasTrustReward && !trust.claimed) {
+        toast({ title: `Not eligible for the ${rewardToken} reward`, description: `${trust.reason ?? `You don't qualify for the ${rewardToken} reward yet.`} ${xpText}` });
+      } else {
+        toast({ title: "Rewards claimed", description: xpText });
+      }
 
-      setCampaignCompleted(true);
+      if (questsCompleted) setCampaignCompleted(true);
+      setCampaignRefreshToken(prev => prev + 1);
     } catch (error: any) {
       console.error("[ACTION] finalizeCampaignReward ✗", error);
       console.error(error);
@@ -477,6 +517,8 @@ export default function CampaignEnvironment() {
     ? Number((totalTrustAvailable / maxParticipants).toFixed(2))
     : 0;
   const hasTrustReward = Number(reward.pool ?? totalTrustAvailable ?? 0) > 0;
+  // Claim: completing the campaign (once), or the TRUST reward once eligible
+  const canClaim = (questsCompleted && !campaignCompleted) || !!eligibility?.eligible;
   const activeHubInfo: HubInfo = hubInfo ?? {
     name: projectName || "Unknown Project",
     description: "",
@@ -583,25 +625,36 @@ export default function CampaignEnvironment() {
                     <p className="text-xs opacity-50 uppercase">Rewards</p>
                     <p className="text-sm">
                       {hasTrustReward && Number(reward.xp) > 0
-                        ? `${reward.xp} XP + ${trustReward} $TRUST`
+                        ? `${reward.xp} XP + ${trustReward} ${rewardToken}`
                         : hasTrustReward
-                        ? `${trustReward} $TRUST`
+                        ? `${trustReward} ${rewardToken}`
                         : `${reward.xp} XP`}
                     </p>
+                    {hasTrustReward && joinedCampaign && eligibility && (
+                      <p className={`text-xs ${eligibility.eligible || eligibility.claimed ? "text-emerald-400" : "opacity-70"}`}>
+                        {eligibility.claimed
+                          ? `You've claimed the ${rewardToken} reward.`
+                          : eligibility.eligible
+                          ? `You're eligible for the ${rewardToken} reward.`
+                          : eligibility.required !== null && (eligibility.current ?? 0) < eligibility.required
+                          ? `${rewardToken} reward: your Nexura score is ${eligibility.current ?? 0}% of the ${eligibility.required}% needed.`
+                          : eligibility.reason}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
 
               <Button
                 onClick={joinedCampaign ? claimCampaignReward : handleJoinCampaign}
-                disabled={joinedCampaign ? (!questsCompleted || campaignCompleted) : joiningCampaign}
-                className={`w-full font-semibold rounded-xl py-3 mt-6 ${!campaignCompleted
+                disabled={joinedCampaign ? !canClaim : joiningCampaign}
+                className={`w-full font-semibold rounded-xl py-3 mt-6 ${!joinedCampaign || canClaim
                     ? "bg-purple-600 hover:bg-purple-700 text-white"
                     : "bg-gray-600 cursor-not-allowed text-gray-300"
                   }`}
               >
                 {joinedCampaign
-                  ? (campaignCompleted ? "Completed" : "Claim Rewards")
+                  ? (canClaim ? "Claim Rewards" : campaignCompleted ? "Completed" : "Claim Rewards")
                   : (joiningCampaign ? "Joining..." : "Join Campaign")}
               </Button>
             </div>
@@ -611,7 +664,8 @@ export default function CampaignEnvironment() {
         <div className="space-y-4 sm:space-y-6">
           {quests.length > 0 ? (
             quests.map((quest) => {
-              const requiresProof = ["comment", "follow", "comment-x", "follow-x", "repost-x", "feedback", "create-post", "wallet-address"].includes(quest.tag);
+              // Custom tasks ("other") have no automatic check, so they're reviewed by the project too
+              const requiresProof = ["other", "comment", "follow", "comment-x", "follow-x", "repost-x", "feedback", "create-post", "wallet-address"].includes(quest.tag);
               const isFeedback = quest.tag === "feedback";
               const isWalletAddress = quest.tag === "wallet-address";
               const isTns = quest.tag === "trust-name";
@@ -758,7 +812,7 @@ export default function CampaignEnvironment() {
                       ) : (
                         <input
                           type="url"
-                          placeholder={quest.tag === "create-post" ? "Paste the link to your post here" : "Paste your comment link or Twitter username here"}
+                          placeholder={quest.tag === "create-post" ? "Paste the link to your post here" : quest.tag === "other" ? "Paste a link or describe what you did" : "Paste your comment link or Twitter username here"}
                           value={proofLinks[quest._id] || ""}
                           onChange={(e) => setProofLinks({ ...proofLinks, [quest._id]: e.target.value })}
                           className="w-full bg-black/40 border border-white/20 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500"

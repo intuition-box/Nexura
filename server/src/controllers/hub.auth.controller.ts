@@ -6,7 +6,9 @@ import {
 	JWT,
 	getRefreshToken,
 	hashPassword,
-	generateOTP
+	generateOTP,
+	passwordChangeMark,
+	hubSessionTtl
 } from "@/utils/utils";
 import logger from "@/config/logger";
 import { server } from "@/models/server.model";
@@ -23,7 +25,7 @@ import {
   ADMIN_DISCORD_REDIRECT_URI,
   ADMIN_DISCORD_CLIENT_REDIRECT_URI,
 } from "@/utils/env.utils";
-import { hubAdmin, hub, userHubAdmin, userHub } from "@/models/hub.model";
+import { hubAdmin, hub, userHubAdmin, userHub, touchHubAdminActivity } from "@/models/hub.model";
 import { user } from "@/models/user.model";
 import bcrypt from "bcrypt";
 import mongoose from "mongoose";
@@ -31,8 +33,17 @@ import axios from "axios";
 import { resetEmail, sendOTPConfirmEmail, resetPasswordOTPEmail } from "@/utils/sendMail";
 import { OTP } from "@/models/otp.model";
 import { REDIS } from "@/utils/redis.utils";
+import { revokeToken } from "@/models/revokedToken.model";
+import { linkedHubWallet } from "@/utils/hubWallet";
+import { walletLoginProblem } from "@/utils/walletLogin";
+import { isAddress } from "viem";
+import { issueWalletToken, walletFromToken } from "@/utils/walletToken";
+import { TWO_FACTOR_PURPOSE } from "@/controllers/twoFactor.controller";
 import { verifiedEmail } from "@/models/verifiedEmail.model";
 import { bannedUser } from "@/models/bannedUser.model";
+import { USERNAME_RULE, accountsForEmail, accountsForLogin, hubChoices, inAnotherStudio, usernameTaken } from "@/utils/hubAccounts";
+
+const WRONG_WALLET = "Switch to the wallet linked to this account to sign in.";
 
 const headers = {
 	"Content-Type": "application/x-www-form-urlencoded",
@@ -48,16 +59,24 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
-		const adminExists = await hubAdmin.findOne({ email }).lean();
-		if (!adminExists) {
-			res.status(BAD_REQUEST).json({ error: "invalid signin credentials" });
+		// The password picks the account. When it opens several studios, the person picks the project
+		const matches = await accountsForLogin(String(email), String(password));
+		if (matches.length === 0) {
+			res.status(BAD_REQUEST).json({ error: "Incorrect email or password." });
 			return;
 		}
-
-		const comparePassword = await bcrypt.compare(password, adminExists.password);
-		if (!comparePassword) {
-			res.status(BAD_REQUEST).json({ error: "invalid signin credentials" });
-			return;
+		const chosenId = typeof req.body.accountId === "string" ? req.body.accountId : "";
+		let adminExists: any = matches.length === 1 ? matches[0] : matches.find(a => String(a._id) === chosenId);
+		// Several studios on this password: only those this wallet can open count; one is picked for them
+		if (!adminExists) {
+			const wallet = (await walletFromToken(req.body?.walletToken)) ?? "";
+			const usable = wallet ? await accountsForWallet(matches, wallet) : [];
+			if (usable.length === 1) adminExists = usable[0];
+			else if (usable.length > 1) { res.status(OK).json({ hubChoiceRequired: true, hubs: await hubChoices(usable) }); return; }
+			else {
+				res.status(FORBIDDEN).json({ error: wallet ? WRONG_WALLET : "Connect your wallet to sign in.", wrongWallet: !!wallet, walletRequired: !wallet });
+				return;
+			}
 		}
 
 		// Check if hub admin is banned
@@ -67,9 +86,40 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
-		const id = adminExists._id.toString();
+		// Every sign-in needs the connected wallet to be the one linked to the account (no signature asked).
+		// An account with no linked wallet yet takes the first wallet it signs in with
+		const linked = await linkedHubWallet(adminExists);
+		// The wallet is the one proven by its token (signed once when it connected)
+		const walletAddress = await walletFromToken(req.body?.walletToken);
+		if (!walletAddress || !isAddress(walletAddress)) {
+			res.status(FORBIDDEN).json({ error: linked ? "Connect the wallet linked to this account to sign in." : "Connect your wallet to sign in.", walletRequired: true });
+			return;
+		}
+		if (linked && String(walletAddress).toLowerCase() !== linked.toLowerCase()) {
+			res.status(FORBIDDEN).json({ error: WRONG_WALLET, wrongWallet: true });
+			return;
+		}
+		if (!linked) {
+			const claimed = await hubAdmin.updateOne(
+				{ _id: adminExists._id, $or: [{ linkedWallet: null }, { linkedWallet: { $exists: false } }] },
+				{ $set: { linkedWallet: String(walletAddress) } },
+			);
+			if (!claimed.modifiedCount) {
+				res.status(FORBIDDEN).json({ error: "Your studio's wallet was just set. Sign in again.", walletRequired: true });
+				return;
+			}
+		}
 
-		const accessToken = JWT.sign(id);
+		// 2-step verification: the session is only issued after a code from Google Authenticator
+		if (adminExists.twoFactorEnabled) {
+			res.status(OK).json({ twoFactorRequired: true, twoFactorToken: JWT.signFor(adminExists._id.toString(), TWO_FACTOR_PURPOSE, "10m") });
+			return;
+		}
+
+		const id = adminExists._id.toString();
+		touchHubAdminActivity(id);
+
+		const accessToken = JWT.sign(id, hubSessionTtl(req.body?.remember));
 		const refreshToken = getRefreshToken(id);
 
 		res.cookie("hubRefreshToken", refreshToken, {
@@ -97,6 +147,45 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 	}
 };
 
+/** The accounts (of these) this wallet can open: linked to it, or with no wallet linked yet. */
+async function accountsForWallet(accounts: any[], wallet: string) {
+	const linked = await Promise.all(accounts.map(a => linkedHubWallet(a)));
+	return accounts.filter((_, i) => !linked[i] || linked[i]!.toLowerCase() === wallet.toLowerCase());
+}
+
+/**
+ * POST /hub/sign-in/check { email, password, walletAddress }: before Sign in, whether the connected
+ * wallet can open the account. Answers only for a correct password (wrong ones count as attempts).
+ */
+export const checkSignInWallet = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { email, password, walletAddress } = req.body ?? {};
+		const matches = await accountsForLogin(String(email ?? ""), String(password ?? ""));
+		if (matches.length === 0) { res.status(BAD_REQUEST).json({ status: "unknown" }); return; }
+		if (!walletAddress) { res.status(OK).json({ status: "walletRequired" }); return; }
+		const linked = await Promise.all(matches.map(a => linkedHubWallet(a)));
+		const usable = matches.filter((_, i) => !linked[i] || linked[i]!.toLowerCase() === String(walletAddress).toLowerCase());
+		if (usable.length) { res.status(OK).json({ status: "ok" }); return; }
+		res.status(OK).json({ status: "wrongWallet", error: WRONG_WALLET });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't check the wallet" });
+	}
+};
+
+/** POST /hub/wallet-proof { walletAddress, message, signature }: one signature, a 30-day wallet token. */
+export const proveWallet = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { walletAddress, message, signature } = req.body ?? {};
+		const problem = await walletLoginProblem(walletAddress, message, signature);
+		if (problem) { res.status(UNAUTHORIZED).json({ error: problem }); return; }
+		res.status(OK).json({ walletToken: issueWalletToken(String(walletAddress)), address: String(walletAddress).toLowerCase() });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't verify the wallet" });
+	}
+};
+
 export const superAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
 		const { error } = validateSuperAdminData(req.body);
@@ -116,9 +205,16 @@ export const superAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) 
       return;
     }
 
-    const emailExists = await hubAdmin.exists({ email: strippedEmail });
-    if (emailExists) {
-      res.status(BAD_REQUEST).json({ error: "An account with this email already exists. Please sign in instead." });
+    const username = String(name).trim();
+    if (!USERNAME_RULE.test(username)) {
+      res.status(BAD_REQUEST).json({ error: "Use 3 to 30 letters, numbers, dots or underscores for your username." });
+      return;
+    }
+
+    // The wallet that signs here is the only one that can sign in to this account
+    const walletAddress = await walletFromToken(req.body?.walletToken);
+    if (!walletAddress) {
+      res.status(UNAUTHORIZED).json({ error: "Connect and verify your wallet to create your studio.", walletRequired: true });
       return;
     }
 
@@ -129,6 +225,7 @@ export const superAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) 
       email: strippedEmail,
       password: hashedPassword,
       role: "superadmin",
+      linkedWallet: String(walletAddress),
     });
 
 		await verifiedEmail.findByIdAndDelete(verified._id)
@@ -147,7 +244,7 @@ export const superAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) 
 		logger.error(error);
 		const isDuplicate = error?.code === 11000;
 		res.status(isDuplicate ? BAD_REQUEST : INTERNAL_SERVER_ERROR).json({
-      error: isDuplicate ? "An account with this email already exists. Please sign in instead." : "Error creating super admin",
+      error: isDuplicate ? "That username or email can't be used. Try another username." : "Error creating super admin",
     });
 	}
 }
@@ -261,6 +358,14 @@ export const fetchServers = async (req: GlobalRequest, res: GlobalResponse) => {
 	}
 }
 
+async function connectedGuild(sessionId: unknown, serverId: unknown): Promise<string | null> {
+	if (typeof sessionId !== "string" || !mongoose.Types.ObjectId.isValid(sessionId)) return null;
+	if (typeof serverId !== "string" || !/^\d{5,25}$/.test(serverId)) return null;
+	const session = await server.findById(sessionId).select("servers").lean() as any;
+	const listed = session?.servers?.some((s: any) => String(s?.id) === serverId);
+	return listed ? serverId : null;
+}
+
 export const fetchRoles = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
 		const { id, serverId } = req.query as { id: string; serverId: string };
@@ -269,13 +374,13 @@ export const fetchRoles = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
-		const discordServers = await server.findById(id);
-		if (!discordServers) {
-			res.status(INTERNAL_SERVER_ERROR).json({ error: "kindly authenticate your discord" });
+		const guildId = await connectedGuild(id, serverId);
+		if (!guildId) {
+			res.status(NOT_FOUND).json({ error: "that server isn't one of your connected Discord servers" });
 			return;
 		}
 
-		const { data } = await axios.get(`https://discord.com/api/v10/guilds/${serverId}/roles`, {
+		const { data } = await axios.get(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
 			headers: {
 				...headers,
 				Authorization: `Bot ${BOT_TOKEN}`,
@@ -299,13 +404,13 @@ export const fetchChannels = async (req: GlobalRequest, res: GlobalResponse) => 
 			return;
 		}
 
-		const discordServers = await server.findById(id);
-		if (!discordServers) {
-			res.status(INTERNAL_SERVER_ERROR).json({ error: "kindly authenticate your discord" });
+		const guildId = await connectedGuild(id, serverId);
+		if (!guildId) {
+			res.status(NOT_FOUND).json({ error: "that server isn't one of your connected Discord servers" });
 			return;
 		}
 
-		const { data } = await axios.get(`https://discord.com/api/v10/guilds/${serverId}/channels`, {
+		const { data } = await axios.get(`https://discord.com/api/v10/guilds/${guildId}/channels`, {
 			headers: {
 				...headers,
 				Authorization: `Bot ${BOT_TOKEN}`,
@@ -355,13 +460,20 @@ export const hubAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) =>
 		const strippedEmail = email.trim().toLowerCase();
 		const trimmedName = String(req.body.name ?? "").trim();
 
-		const adminExists = await hubAdmin.findOne({
-			$or: [{ email: strippedEmail }, { name: trimmedName }]
-		}).lean();
-
-		if (adminExists) {
-			const field = adminExists.email === strippedEmail ? "email" : "username";
-			res.status(BAD_REQUEST).json({ error: `This ${field} account already has an existing hub` });
+		if (await hubAdmin.exists({ email: strippedEmail, hub: otp.hubId })) {
+			res.status(BAD_REQUEST).json({ error: "This email already has an account in this studio. Sign in instead." });
+			return;
+		}
+		if (await inAnotherStudio(strippedEmail, otp.hubId)) {
+			res.status(BAD_REQUEST).json({ error: "This email is already on another studio's team." });
+			return;
+		}
+		if (!USERNAME_RULE.test(trimmedName)) {
+			res.status(BAD_REQUEST).json({ error: "Use 3 to 30 letters, numbers, dots or underscores for your username." });
+			return;
+		}
+		if (await usernameTaken(trimmedName, otp.hubId)) {
+			res.status(BAD_REQUEST).json({ error: "That username is already used in this studio.", usernameTaken: true });
 			return;
 		}
 
@@ -374,6 +486,7 @@ export const hubAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) =>
 		const admin = await hubAdmin.create(req.body);
 
 		const id = admin._id.toString();
+		touchHubAdminActivity(id);
 
 		const accessToken = JWT.sign(id);
 		const refreshToken = getRefreshToken(id);
@@ -425,6 +538,8 @@ export const forgotPassword = async (req: GlobalRequest, res: GlobalResponse) =>
 
 		const code = generateOTP();
 
+		// Only the newest reset code works (invite codes carry a hubId and are left alone)
+		await OTP.deleteMany({ email: strippedEmail, page: "project", hubId: null });
 		await OTP.create({
 			email: strippedEmail,
 			code,
@@ -445,21 +560,24 @@ export const forgotPassword = async (req: GlobalRequest, res: GlobalResponse) =>
 
 export const resetPassword = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
-		const { email, code, password } = req.body;
+		const { email, code, password, accountId } = req.body;
 
 		if (!email || !code || !password) {
 			res.status(BAD_REQUEST).json({ error: "email, code, and password are required" });
 			return;
 		}
 
-		const otp = await OTP.findOne({ email: email.trim().toLowerCase(), code, page: "project" }).lean();
-		if (!otp) {
+		const otp = await OTP.findOne({ email: email.trim().toLowerCase(), code: String(code), page: "project", hubId: null }).lean();
+		if (!otp || new Date(otp.expiresAt).getTime() <= Date.now()) {
 			res.status(BAD_REQUEST).json({ error: "invalid or expired code" });
 			return;
 		}
 
-		const adminExists = await hubAdmin.findOne({ email: email.trim().toLowerCase() });
+		// An email in several studios picks which account to reset (the code already proved the email)
+		const accounts = await accountsForEmail(String(email));
+		const adminExists = accounts.length === 1 ? accounts[0] : accounts.find(a => String(a._id) === String(accountId ?? ""));
 		if (!adminExists) {
+			if (accounts.length > 1) { res.status(OK).json({ hubChoiceRequired: true, hubs: await hubChoices(accounts) }); return; }
 			res.status(NOT_FOUND).json({ error: "admin not found" });
 			return;
 		}
@@ -467,11 +585,21 @@ export const resetPassword = async (req: GlobalRequest, res: GlobalResponse) => 
 		const hashedPassword = await hashPassword(password);
 
 		adminExists.password = hashedPassword;
+		// Signs out every other session
+		(adminExists as any).passwordChangedAt = passwordChangeMark();
 		await adminExists.save();
 
-		await OTP.deleteOne({ _id: otp._id });
+		// Each code works once; any other reset code for this email is spent too
+		await OTP.deleteMany({ email: email.trim().toLowerCase(), page: "project", hubId: null });
+
+		// With a linked wallet, an email code alone never opens a session: sign in with the wallet
+		if (await linkedHubWallet(adminExists)) {
+			res.status(OK).json({ message: "admin password reset successful!", signInRequired: true });
+			return;
+		}
 
 		const id = adminExists._id.toString();
+		touchHubAdminActivity(id);
 		const accessToken = JWT.sign(id);
 		const refreshToken = getRefreshToken(id);
 
@@ -505,7 +633,7 @@ export const logout = async (req: GlobalRequest, res: GlobalResponse) => {
 
 		const { token } = req;
 
-		await REDIS.set({ key: `logout:${token}`, data: { token }, ttl: 7 * 24 * 60 * 60 });
+		await revokeToken(token!);
 
 		res.clearCookie("hubRefreshToken");
 		res.status(OK).json({ message: "admin logged out!" });
@@ -526,7 +654,8 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 			return;
 		}
 
-		const adminExists = await userHubAdmin.findOne({ email }).lean();
+		// Matches the account however the email was typed (case, surrounding spaces)
+		const adminExists = await userHubAdmin.findOne({ email: String(email).trim().toLowerCase() }).collation({ locale: "en", strength: 2 }).lean();
 		if (!adminExists) {
 			res.status(BAD_REQUEST).json({ error: "invalid signin credentials" });
 			return;
@@ -546,6 +675,7 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 		}
 
 		const id = adminExists._id.toString();
+		touchHubAdminActivity(id);
 
     // Auto-create hub if admin has none
     let hubId = (adminExists as any).hub;
@@ -613,7 +743,7 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 
 export const userHubAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
-    console.log('[userHubAdminSignUp] Received request body:', req.body);
+    console.log('[userHubAdminSignUp] sign-up request for', String(req.body?.email ?? ''));
 		const { error } = validateSuperAdminData(req.body);
 		if (error) {
 			const missingFields = getMissingFields(error);
@@ -717,7 +847,7 @@ export const userHubLogout = async (req: GlobalRequest, res: GlobalResponse) => 
 
 		const { token } = req;
 
-		await REDIS.set({ key: `logout:${token}`, data: { token }, ttl: 7 * 24 * 60 * 60 });
+		await revokeToken(token!);
 
 		res.clearCookie("userHubRefreshToken");
 		res.status(OK).json({ message: "user hub admin logged out!" });
@@ -747,8 +877,9 @@ export const userHubForgotPassword = async (req: GlobalRequest, res: GlobalRespo
 		const code = generateOTP();
 		const hubId = hubAdminExists.hub?.toString();
 
+		// Replaces only an earlier reset code, never an invite for the same email
 		await OTP.findOneAndUpdate(
-			{ email: hubAdminExists.email },
+			{ email: hubAdminExists.email, page: "user" },
 			{
 				email: hubAdminExists.email,
 				code,
@@ -779,8 +910,8 @@ export const userHubResetPassword = async (req: GlobalRequest, res: GlobalRespon
 			return;
 		}
 
-		const otp = await OTP.findOne({ email: email.trim().toLowerCase(), code, page: "user" }).lean();
-		if (!otp) {
+		const otp = await OTP.findOne({ email: email.trim().toLowerCase(), code: String(code), page: "user" }).lean();
+		if (!otp || new Date(otp.expiresAt).getTime() <= Date.now()) {
 			res.status(BAD_REQUEST).json({ error: "invalid or expired code" });
 			return;
 		}
@@ -796,9 +927,11 @@ export const userHubResetPassword = async (req: GlobalRequest, res: GlobalRespon
 		adminExists.password = hashedPassword;
 		await adminExists.save();
 
-		await OTP.deleteOne({ _id: otp._id });
+		// Each code works once
+		await OTP.deleteMany({ email: email.trim().toLowerCase(), page: "user" });
 
 		const id = adminExists._id.toString();
+		touchHubAdminActivity(id);
 		const accessToken = JWT.sign(id);
 		const refreshToken = getRefreshToken(id);
 
@@ -837,13 +970,8 @@ export const validateHubEmail = async (req: GlobalRequest, res: GlobalResponse) 
 
     const strippedEmail = email.trim().toLowerCase();
 
-    let emailExists: any | null = null;
-
-    if (page === "user") {
-      emailExists = await userHubAdmin.exists({ email: strippedEmail });
-    } else {
-      emailExists = await hubAdmin.exists({ email: strippedEmail });
-    }
+    // Studio (project) emails can hold accounts in many hubs; user hubs still allow one per email
+    const emailExists = page === "user" ? await userHubAdmin.exists({ email: strippedEmail }) : null;
 
     if (emailExists) {
       res.status(BAD_REQUEST).json({ error: "This email account already has an existing hub" });
@@ -852,7 +980,7 @@ export const validateHubEmail = async (req: GlobalRequest, res: GlobalResponse) 
 
     const code = generateOTP();
 
-    await OTP.deleteMany({ email: strippedEmail });
+    await OTP.deleteMany({ email: strippedEmail, hubId: null });
 
     await Promise.all([
       OTP.create({ code, email: strippedEmail, page: page || "project", role: "admin" }),
@@ -869,14 +997,14 @@ export const validateHubEmail = async (req: GlobalRequest, res: GlobalResponse) 
 export const confirmHubEmailValidation = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const { code, email } = req.body;
-    if (!code && !email) {
+    if (typeof code !== "string" || typeof email !== "string" || !code.trim() || !email.trim()) {
       res.status(BAD_REQUEST).json({ error: "send email and otp code" });
       return;
     }
 
     const strippedEmail = email.trim().toLowerCase();
 
-    const otpFound = await OTP.findOne({ email: strippedEmail, code }).lean();
+    const otpFound = await OTP.findOne({ email: strippedEmail, code: code.trim(), hubId: null }).lean();
     if (!otpFound) {
       res.status(NOT_FOUND).json({ error: "otp does not exist, is invalid or has expired" });
       return;
@@ -889,7 +1017,7 @@ export const confirmHubEmailValidation = async (req: GlobalRequest, res: GlobalR
 			return;
 		};
 
-    await OTP.deleteOne({ email: strippedEmail, code });
+    await OTP.deleteOne({ _id: otpFound._id });
 
     const existingVerification = await verifiedEmail.findOne({ email: strippedEmail }).lean();
     if (!existingVerification) {
@@ -899,6 +1027,6 @@ export const confirmHubEmailValidation = async (req: GlobalRequest, res: GlobalR
     res.status(OK).json({ message: "otp verified" });
   } catch (error) {
     logger.error("CONFIRM_HUB_EMAIL_ERROR:", error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: "error confirming otp for email validation", details: error instanceof Error ? error.message : String(error) });
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "error confirming otp for email validation" });
   }
   }

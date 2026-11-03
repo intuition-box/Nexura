@@ -1,4 +1,5 @@
 "use client";
+import StudioLoader from "@/components/studio/StudioLoader";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { BACKEND_URL, getLessonFeeContractProject } from "@/lib/constants";
 import { getStoredAccessToken } from "@/lib/queryClient";
 import { payStudioHubFee } from "@/lib/performOnchainAction";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 const apiRequest = async <T = any>(args: any) => {
   const { method, endpoint, data, params } = args;
@@ -28,7 +30,7 @@ const apiRequest = async <T = any>(args: any) => {
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (!(data instanceof FormData)) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${BACKEND_URL || ""}${url}`, {
+  const res = await resilientFetch(`${BACKEND_URL || ""}${url}`, {
     method,
     headers,
     body: data instanceof FormData ? data : data ? JSON.stringify(data) : undefined,
@@ -171,7 +173,7 @@ const standardOutroBody = (lessonTitle: string) =>
   `Great job — you finished the quiz on ${lessonTitle.trim() || "this lesson"}`;
 
 const textareaClassName =
-  "min-h-[120px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8a3ffc]";
+  "min-h-[120px] w-full rounded-md border border-[rgba(28,37,51,0.12)] bg-[#f4f1fc] px-3 py-2 text-sm text-[#1c2533] placeholder:text-[#98a0b4] focus:outline-none focus:ring-2 focus:ring-[#8a3ffc]";
 
 const dedupeById = <T extends { _id: string }>(items: T[] | undefined) => {
   const seen = new Set<string>();
@@ -984,10 +986,10 @@ export default function CreateLesson({
     trophy === "bronze"
       ? "text-amber-700"
       : trophy === "silver"
-      ? "text-zinc-300"
+      ? "text-[#3d485c]"
       : trophy === "gold"
-      ? "text-yellow-400"
-      : "text-white/40";
+      ? "text-[#c27c00]"
+      : "text-[#69728a]";
 
   const activeItem = useMemo(() => {
     if (!activeContentId || activeContentId === COMPLETION_SENTINEL) return null;
@@ -1089,19 +1091,19 @@ export default function CreateLesson({
   // ----- Step strip (mirrors CreateCampaign 3-step indicator) -----
 
   const stepStrip = (
-    <div className="flex gap-8 border-b border-white/10">
+    <div className="flex gap-8 border-b border-[rgba(28,37,51,0.12)]">
       <button
         onClick={() => setActiveTab("details")}
         className="flex flex-1 flex-col items-start justify-start gap-2 py-5 text-lg font-semibold transition"
       >
         <span
           className={`block h-[4px] w-full rounded-full transition-colors ${
-            activeTab === "details" ? "bg-[#8B3EFE]" : "bg-white/20"
+            activeTab === "details" ? "bg-[#8B3EFE]" : "bg-[#efeafb]"
           }`}
         />
-        <div className="flex items-center gap-2 text-white/80 hover:text-white">
+        <div className="flex items-center gap-2 text-[#3d485c] hover:text-[#1c2533]">
           <BookOpen className="h-5 w-5" />
-          <span className={activeTab === "details" ? "text-purple-400" : ""}>Details</span>
+          <span className={activeTab === "details" ? "text-[#8a3ffc]" : ""}>Details</span>
         </div>
       </button>
 
@@ -1121,12 +1123,12 @@ export default function CreateLesson({
       >
         <span
           className={`block h-[4px] w-full rounded-full transition-colors ${
-            activeTab === "content" ? "bg-[#8B3EFE]" : "bg-white/20"
+            activeTab === "content" ? "bg-[#8B3EFE]" : "bg-[#efeafb]"
           }`}
         />
-        <div className="flex items-center gap-2 text-white/80 hover:text-white">
+        <div className="flex items-center gap-2 text-[#3d485c] hover:text-[#1c2533]">
           <MessageSquare className="h-5 w-5" />
-          <span className={activeTab === "content" ? "text-purple-400" : ""}>Content</span>
+          <span className={activeTab === "content" ? "text-[#8a3ffc]" : ""}>Content</span>
         </div>
       </button>
 
@@ -1146,12 +1148,12 @@ export default function CreateLesson({
       >
         <span
           className={`block h-[4px] w-full rounded-full transition-colors ${
-            activeTab === "preview" ? "bg-[#8B3EFE]" : "bg-white/20"
+            activeTab === "preview" ? "bg-[#8B3EFE]" : "bg-[#efeafb]"
           }`}
         />
-        <div className="flex items-center gap-2 text-white/80 hover:text-white">
+        <div className="flex items-center gap-2 text-[#3d485c] hover:text-[#1c2533]">
           <Send className="h-5 w-5" />
-          <span className={activeTab === "preview" ? "text-purple-400" : ""}>Preview</span>
+          <span className={activeTab === "preview" ? "text-[#8a3ffc]" : ""}>Preview</span>
         </div>
       </button>
     </div>
@@ -1180,7 +1182,7 @@ export default function CreateLesson({
         className={`flex h-10 w-full items-center justify-between rounded-[8px] px-3 text-left text-sm transition-colors ${
           isActive
             ? "bg-[#8B3EFE] text-white"
-            : "border border-[rgba(139,62,254,0.2)] bg-[#060210] text-white/90 hover:bg-[#0a0418]"
+            : "border border-[rgba(139,62,254,0.2)] bg-white text-[#3d485c] hover:bg-[#f4f1fc]"
         }`}
       >
         <span className="flex items-center gap-2">
@@ -1203,8 +1205,8 @@ export default function CreateLesson({
           }}
           className={`shrink-0 rounded-md p-1 transition-colors ${
             isActive
-              ? "text-white/80 hover:bg-white/15 hover:text-white"
-              : "text-white/50 hover:bg-white/10 hover:text-white"
+              ? "text-[#3d485c] hover:bg-[rgba(138,63,252,0.06)] hover:text-[#1c2533]"
+              : "text-[#69728a] hover:bg-[rgba(138,63,252,0.06)] hover:text-[#1c2533]"
           } ${deletingContentId === item.data._id ? "opacity-40" : ""}`}
           aria-label={`Delete ${label}`}
         >
@@ -1220,8 +1222,8 @@ export default function CreateLesson({
         <BookOpen className="h-16 w-16 text-[#8B3EFE]" />
       </div>
       <div className="space-y-1">
-        <p className="text-base font-semibold text-white">No Lesson content yet</p>
-        <p className="text-xs text-white/70">
+        <p className="text-base font-semibold text-[#1c2533]">No Lesson content yet</p>
+        <p className="text-xs text-[#3d485c]">
           Start by adding your first step, quiz or video.
         </p>
       </div>
@@ -1240,7 +1242,7 @@ export default function CreateLesson({
     const draftValue = paragraphDrafts[item._id] ?? item.text ?? "";
     return (
       <div className="flex flex-1 flex-col gap-3">
-        <h3 className="text-base font-semibold text-white">Paragraph Content</h3>
+        <h3 className="text-base font-semibold text-[#1c2533]">Paragraph Content</h3>
         <textarea
           value={draftValue}
           onChange={(e) =>
@@ -1248,7 +1250,7 @@ export default function CreateLesson({
           }
           onBlur={() => void persistParagraph(item, draftValue)}
           placeholder="Write the paragraph content..."
-          className="min-h-[280px] w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#060210] p-3 text-sm leading-6 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
+          className="min-h-[280px] w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white p-3 text-sm leading-6 text-[#1c2533] placeholder:text-[#98a0b4] focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
         />
       </div>
     );
@@ -1290,18 +1292,18 @@ export default function CreateLesson({
     return (
       <div className="flex flex-1 flex-col gap-5">
         <div className="space-y-2">
-          <h3 className="text-base font-semibold text-white">Question</h3>
+          <h3 className="text-base font-semibold text-[#1c2533]">Question</h3>
           <textarea
             value={draftValue.question}
             onChange={(e) => updateDraft({ question: e.target.value })}
             onBlur={commit}
             placeholder="Enter the question..."
-            className="min-h-[88px] w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#060210] p-3 text-sm leading-6 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
+            className="min-h-[88px] w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white p-3 text-sm leading-6 text-[#1c2533] placeholder:text-[#98a0b4] focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
           />
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-base font-semibold text-white">Options</h3>
+          <h3 className="text-base font-semibold text-[#1c2533]">Options</h3>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {visibleOptions.map((option, idx) => (
               <input
@@ -1315,19 +1317,19 @@ export default function CreateLesson({
                 }}
                 onBlur={commit}
                 placeholder={`Option ${idx + 1}`}
-                className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#060210] px-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
+                className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white px-3 text-sm text-[#1c2533] placeholder:text-[#98a0b4] focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
               />
             ))}
           </div>
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-base font-semibold text-white">Correct Answer</h3>
+          <h3 className="text-base font-semibold text-[#1c2533]">Correct Answer</h3>
           <select
             value={draftValue.solution}
             onChange={(e) => updateDraft({ solution: e.target.value })}
             onBlur={commit}
-            className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#060210] px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
+            className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white px-3 text-sm text-[#1c2533] focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
           >
             <option value="">Select the correct option</option>
             {visibleOptions
@@ -1348,7 +1350,7 @@ export default function CreateLesson({
     const draftValue = videoDrafts[item._id] ?? item.url ?? "";
     return (
       <div className="flex flex-1 flex-col gap-3">
-        <h3 className="text-base font-semibold text-white">Upload Youtube URL</h3>
+        <h3 className="text-base font-semibold text-[#1c2533]">Upload Youtube URL</h3>
         <input
           type="url"
           value={draftValue}
@@ -1357,11 +1359,11 @@ export default function CreateLesson({
           }
           onBlur={() => void persistVideo(item, draftValue)}
           placeholder="Paste URL here"
-          className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#060210] px-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
+          className="h-10 w-full rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white px-3 text-sm text-[#1c2533] placeholder:text-[#98a0b4] focus:outline-none focus:ring-2 focus:ring-[#8B3EFE]"
         />
         <div className="flex items-start gap-2 rounded-[8px] border border-[rgba(139,62,254,0.4)] bg-[rgba(139,62,254,0.1)] p-3">
           <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#8B3EFE]" />
-          <p className="text-xs leading-5 text-white/80">
+          <p className="text-xs leading-5 text-[#3d485c]">
             Only Standard Youtube video links are supported. Youtube Shorts or other
             platforms are not supported.
           </p>
@@ -1375,17 +1377,17 @@ export default function CreateLesson({
     return (
       <div className="flex flex-1 flex-col gap-5">
         <div className="space-y-2">
-          <h3 className="text-base font-semibold text-white">Completion Card</h3>
-          <p className="text-xs text-white/60">
+          <h3 className="text-base font-semibold text-[#1c2533]">Completion Card</h3>
+          <p className="text-xs text-[#69728a]">
             Auto-filled from the lesson title. Shown to learners when they finish.
           </p>
         </div>
 
-        <div className="rounded-[12px] border border-[rgba(139,62,254,0.3)] bg-[#060210] p-5">
+        <div className="rounded-[12px] border border-[rgba(139,62,254,0.3)] bg-white p-5">
           <div className="flex flex-col items-start gap-3">
-            <span className="text-[11px] uppercase tracking-wide text-white/50">Preview</span>
-            <p className="text-xl font-semibold text-white">Congratulations!</p>
-            <p className="text-sm leading-relaxed text-white/80">
+            <span className="text-[11px] uppercase tracking-wide text-[#69728a]">Preview</span>
+            <p className="text-xl font-semibold text-[#1c2533]">Congratulations!</p>
+            <p className="text-sm leading-relaxed text-[#3d485c]">
               You have mastered {lessonTitle}
             </p>
           </div>
@@ -1408,15 +1410,15 @@ export default function CreateLesson({
     return (
       <div className="flex flex-1 flex-col gap-5">
         <div className="space-y-2">
-          <h3 className="text-base font-semibold text-white">{heading}</h3>
-          <p className="text-xs text-white/60">{sub}</p>
+          <h3 className="text-base font-semibold text-[#1c2533]">{heading}</h3>
+          <p className="text-xs text-[#69728a]">{sub}</p>
         </div>
 
-        <div className="rounded-[12px] border border-[rgba(139,62,254,0.3)] bg-[#060210] p-5">
+        <div className="rounded-[12px] border border-[rgba(139,62,254,0.3)] bg-white p-5">
           <div className="flex flex-col items-start gap-3">
-            <span className="text-[11px] uppercase tracking-wide text-white/50">Preview</span>
-            <Trophy className="h-10 w-10 text-zinc-300" />
-            <p className="text-sm leading-relaxed text-white/80">{body}</p>
+            <span className="text-[11px] uppercase tracking-wide text-[#69728a]">Preview</span>
+            <Trophy className="h-10 w-10 text-[#3d485c]" />
+            <p className="text-sm leading-relaxed text-[#3d485c]">{body}</p>
           </div>
         </div>
       </div>
@@ -1443,7 +1445,7 @@ export default function CreateLesson({
       // Fall back to nothing selected — show a soft prompt.
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-          <p className="text-sm text-white/70">Select an item from the left to edit it.</p>
+          <p className="text-sm text-[#3d485c]">Select an item from the left to edit it.</p>
         </div>
       );
     }
@@ -1455,14 +1457,14 @@ export default function CreateLesson({
   // ----- Render -----
 
   return (
-    <main className="flex-1 overflow-y-auto p-4 md:p-8 pt-16 md:pt-8 pb-24 md:pb-8 text-white">
+    <main className="flex-1 overflow-y-auto p-4 md:p-8 pt-16 md:pt-8 pb-24 md:pb-8 text-[#1c2533]">
       <div className="max-w-5xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">
               {isEditMode ? "Edit Lesson" : "Create New Lesson"}
             </h1>
-            <p className="text-white/60 mt-2 text-sm">
+            <p className="text-[#69728a] mt-2 text-sm">
               {isEditMode
                 ? "Update your lesson, manage its content blocks, and republish when you're ready."
                 : "Build a new lesson with mini lessons, questions, and videos for your learners."}
@@ -1471,7 +1473,7 @@ export default function CreateLesson({
           <Button
             variant="outline"
             onClick={() => router.push(pathname.startsWith("/user-dashboard") ? "/user-dashboard/lessons-tab" : "/studio-dashboard/lessons-tab")}
-            className="border-white/10 text-white hover:bg-white/5 gap-2"
+            className="border-[rgba(28,37,51,0.12)] text-[#1c2533] hover:bg-[rgba(138,63,252,0.06)] gap-2"
           >
             <ChevronLeft className="w-4 h-4" />
             Back to Lessons
@@ -1486,7 +1488,7 @@ export default function CreateLesson({
             <h2 className="text-xl font-semibold">Lesson Details</h2>
             <Card className="bg-purple/10 backdrop-blur-md p-8 space-y-8">
               {loadingLesson ? (
-                <div className="py-12 text-center text-white/60">Loading lesson...</div>
+                <StudioLoader compact message="Loading lesson…" />
               ) : (
                 <form
                   onSubmit={(e) => {
@@ -1499,7 +1501,7 @@ export default function CreateLesson({
                     <Label className="block mb-2 text-sm font-medium">Lesson Title</Label>
                     <Input
                       placeholder="Enter lesson title..."
-                      className="bg-white/5 border-white/10"
+                      className="bg-[#f4f1fc] border-[rgba(28,37,51,0.12)]"
                       required
                       value={lessonForm.title}
                       onChange={(e) =>
@@ -1519,7 +1521,7 @@ export default function CreateLesson({
                         setLessonForm((prev) => ({ ...prev, description: e.target.value }))
                       }
                     />
-                    <p className="text-xs text-white/50 mt-2">
+                    <p className="text-xs text-[#69728a] mt-2">
                       Keep it clear and practical.
                     </p>
                   </div>
@@ -1530,14 +1532,14 @@ export default function CreateLesson({
                       type="number"
                       min="0"
                       placeholder="0"
-                      className="bg-white/5 border-white/10"
+                      className="bg-[#f4f1fc] border-[rgba(28,37,51,0.12)]"
                       required
                       value={lessonForm.reward}
                       onChange={(e) =>
                         setLessonForm((prev) => ({ ...prev, reward: e.target.value }))
                       }
                     />
-                    <p className="text-xs text-white/50 mt-2">
+                    <p className="text-xs text-[#69728a] mt-2">
                       Amount of XP awarded to each learner who completes the lesson.
                     </p>
                   </div>
@@ -1548,7 +1550,7 @@ export default function CreateLesson({
                         <ImageIcon className="w-4 h-4" />
                         Cover Image
                       </Label>
-                      <label className="block w-full border-2 border-dashed border-purple-500 rounded-2xl p-6 bg-black transition cursor-pointer hover:border-[#8B3EFE]">
+                      <label className="block w-full border-2 border-dashed border-purple-500 rounded-2xl p-6 bg-white transition cursor-pointer hover:border-[#8B3EFE]">
                         <input
                           type="file"
                           accept="image/*"
@@ -1564,13 +1566,13 @@ export default function CreateLesson({
                               alt="Cover preview"
                               className="h-32 w-full object-cover rounded-xl"
                             />
-                            <p className="text-sm text-white/60">Click to change</p>
+                            <p className="text-sm text-[#69728a]">Click to change</p>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center text-center gap-2">
-                            <ImageIcon className="h-10 w-10 text-purple-400" />
-                            <p className="font-medium text-white">Upload cover image</p>
-                            <p className="text-sm text-white/50">SVG, PNG, JPG or GIF</p>
+                            <ImageIcon className="h-10 w-10 text-[#8a3ffc]" />
+                            <p className="font-medium text-[#1c2533]">Upload cover image</p>
+                            <p className="text-sm text-[#69728a]">SVG, PNG, JPG or GIF</p>
                           </div>
                         )}
                       </label>
@@ -1581,7 +1583,7 @@ export default function CreateLesson({
                         <ImageIcon className="w-4 h-4" />
                         Profile Image
                       </Label>
-                      <label className="block w-full border-2 border-dashed border-purple-500 rounded-2xl p-6 bg-black transition cursor-pointer hover:border-[#8B3EFE]">
+                      <label className="block w-full border-2 border-dashed border-purple-500 rounded-2xl p-6 bg-white transition cursor-pointer hover:border-[#8B3EFE]">
                         <input
                           type="file"
                           accept="image/*"
@@ -1595,26 +1597,26 @@ export default function CreateLesson({
                             <img
                               src={lessonForm.profileImagePreview}
                               alt="Profile preview"
-                              className="h-24 w-24 rounded-2xl object-cover border border-white/10"
+                              className="h-24 w-24 rounded-2xl object-cover border border-[rgba(28,37,51,0.12)]"
                             />
-                            <p className="text-sm text-white/60">Click to change</p>
+                            <p className="text-sm text-[#69728a]">Click to change</p>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center text-center gap-2">
-                            <ImageIcon className="h-10 w-10 text-purple-400" />
-                            <p className="font-medium text-white">Upload profile photo</p>
-                            <p className="text-sm text-white/50">Square images work best</p>
+                            <ImageIcon className="h-10 w-10 text-[#8a3ffc]" />
+                            <p className="font-medium text-[#1c2533]">Upload profile photo</p>
+                            <p className="text-sm text-[#69728a]">Square images work best</p>
                           </div>
                         )}
                       </label>
                     </div>
                   </div>
 
-                  <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="space-y-3 rounded-lg border border-[rgba(28,37,51,0.12)] bg-[#f4f1fc] px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-white">Show disclaimer</p>
-                        <p className="text-xs text-white/50">
+                        <p className="text-sm font-medium text-[#1c2533]">Show disclaimer</p>
+                        <p className="text-xs text-[#69728a]">
                           Add a disclaimer that's shown on the final congratulations card.
                         </p>
                       </div>
@@ -1646,7 +1648,7 @@ export default function CreateLesson({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="text-white/60 hover:text-white"
+                      className="text-[#69728a] hover:text-[#1c2533]"
                       onClick={() => onBackToLessons?.()}
                     >
                       ← Back
@@ -1670,7 +1672,7 @@ export default function CreateLesson({
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-semibold">Lesson Content</h2>
-              <p className="text-white/60 text-sm mt-1">
+              <p className="text-[#69728a] text-sm mt-1">
                 Add paragraphs, quizzes, and videos. Select an item on the left to edit it.
               </p>
             </div>
@@ -1678,7 +1680,7 @@ export default function CreateLesson({
             <div className="flex flex-col gap-6 md:flex-row">
               {/* Left sidebar */}
               <div className="relative w-full md:w-[211px]">
-                <div className="flex min-h-[521px] flex-col gap-2 rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-[#110d1f] p-[11px]">
+                <div className="flex min-h-[521px] flex-col gap-2 rounded-[8px] border border-[rgba(139,62,254,0.3)] bg-white p-[11px]">
                   {sidebarItems.map((entry) => {
                     if (entry.kind === "content") return renderSidebarItem(entry.item);
                     const id = sidebarEntryId(entry);
@@ -1692,7 +1694,7 @@ export default function CreateLesson({
                         className={`flex h-10 w-full items-center justify-between rounded-[8px] px-3 text-left text-xs italic transition-colors ${
                           isActive
                             ? "bg-[#8B3EFE] text-white"
-                            : "border border-dashed border-[rgba(139,62,254,0.35)] bg-[#0a0418] text-white/70 hover:bg-[#0d0521]"
+                            : "border border-dashed border-[rgba(139,62,254,0.35)] bg-white text-[#3d485c] hover:bg-[#f4f1fc]"
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -1701,7 +1703,7 @@ export default function CreateLesson({
                         </span>
                         <span
                           className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                            isActive ? "bg-white/15 text-white/90" : "bg-white/5 text-white/40"
+                            isActive ? "bg-[#f4f1fc] text-[#3d485c]" : "bg-[#f4f1fc] text-[#69728a]"
                           }`}
                         >
                           Auto
@@ -1714,7 +1716,7 @@ export default function CreateLesson({
                     <button
                       type="button"
                       onClick={() => setShowAddPopover((s) => !s)}
-                      className="flex h-10 w-full items-center justify-center rounded-[8px] border border-[rgba(139,62,254,0.2)] bg-[#060210] text-white/80 transition-colors hover:bg-[#0a0418]"
+                      className="flex h-10 w-full items-center justify-center rounded-[8px] border border-[rgba(139,62,254,0.2)] bg-white text-[#3d485c] transition-colors hover:bg-[#f4f1fc]"
                       aria-label="Add content"
                       aria-expanded={showAddPopover}
                     >
@@ -1723,14 +1725,14 @@ export default function CreateLesson({
 
                     {/* Popover anchored just below the + button */}
                     {showAddPopover && (
-                      <div className="absolute left-0 right-0 top-full z-20 mt-2 flex flex-col gap-1 rounded-[8px] border border-[rgba(139,62,254,0.4)] bg-[#070315] p-2 shadow-lg">
+                      <div className="absolute left-0 right-0 top-full z-20 mt-2 flex flex-col gap-1 rounded-[8px] border border-[rgba(139,62,254,0.4)] bg-white p-2 shadow-lg">
                         <button
                           type="button"
                           onClick={async () => {
                             setShowAddPopover(false);
                             await addParagraph();
                           }}
-                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-white/90 transition-colors hover:bg-white/5"
+                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)]"
                         >
                           <FileText className="h-4 w-4" />
                           <span>+ Add Paragraph</span>
@@ -1741,7 +1743,7 @@ export default function CreateLesson({
                             setShowAddPopover(false);
                             await addQuiz();
                           }}
-                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-white/90 transition-colors hover:bg-white/5"
+                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)]"
                         >
                           <FileQuestion className="h-4 w-4" />
                           <span>+ Add Quiz</span>
@@ -1752,7 +1754,7 @@ export default function CreateLesson({
                             setShowAddPopover(false);
                             await addVideo();
                           }}
-                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-white/90 transition-colors hover:bg-white/5"
+                          className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)]"
                         >
                           <Play className="h-4 w-4" />
                           <span>+ Add Video</span>
@@ -1771,7 +1773,7 @@ export default function CreateLesson({
                       className={`flex h-10 w-full items-center justify-between rounded-[8px] px-3 text-left text-sm transition-colors ${
                         isCompletionActive
                           ? "bg-[#8B3EFE] text-white"
-                          : "border border-[rgba(139,62,254,0.2)] bg-[#060210] text-white/90 hover:bg-[#0a0418]"
+                          : "border border-[rgba(139,62,254,0.2)] bg-white text-[#3d485c] hover:bg-[#f4f1fc]"
                       }`}
                     >
                       <span className="flex items-center gap-2">
@@ -1784,7 +1786,7 @@ export default function CreateLesson({
               </div>
 
               {/* Right canvas */}
-              <div className="flex min-h-[521px] flex-1 flex-col rounded-[8px] border border-[rgba(139,62,254,0.4)] bg-[#110d1f] p-6">
+              <div className="flex min-h-[521px] flex-1 flex-col rounded-[8px] border border-[rgba(139,62,254,0.4)] bg-white p-6">
                 <div className="flex flex-1 flex-col">{renderRightCanvasBody()}</div>
 
                 {/* Footer navigation */}
@@ -1792,12 +1794,12 @@ export default function CreateLesson({
                   isCompletionActive ||
                   activeContentId?.startsWith("intro-") ||
                   activeContentId?.startsWith("outro-")) && (
-                  <div className="mt-6 flex items-center justify-between gap-3 pt-6 border-t border-white/5">
+                  <div className="mt-6 flex items-center justify-between gap-3 pt-6 border-t border-[rgba(28,37,51,0.12)]">
                     <button
                       type="button"
                       onClick={goToPreviousStep}
                       disabled={previousDisabled}
-                      className="h-10 rounded-[10px] border border-[rgba(139,62,254,0.5)] bg-transparent px-5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="h-10 rounded-[10px] border border-[rgba(139,62,254,0.5)] bg-transparent px-5 text-sm font-semibold text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Previous Step
                     </button>
@@ -1827,7 +1829,7 @@ export default function CreateLesson({
 
             <div className="flex justify-between items-center mt-6">
               <button
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600 transition"
+                className="px-4 py-2 bg-[#efeafb] text-[#1c2533] rounded-lg text-sm hover:bg-[#e6dffa] transition"
                 onClick={() => setActiveTab("details")}
               >
                 ← Back
@@ -1850,12 +1852,12 @@ export default function CreateLesson({
             <div className="flex items-center justify-between gap-4">
               <button
                 onClick={() => setActiveTab("content")}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black px-4 py-2 text-sm text-white/80 transition hover:border-white/20 hover:text-white"
+                className="inline-flex items-center gap-2 rounded-full border border-[rgba(28,37,51,0.12)] bg-white px-4 py-2 text-sm text-[#3d485c] transition hover:border-[rgba(28,37,51,0.25)] hover:text-[#1c2533]"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Back to Builder
               </button>
-              <h2 className="text-base font-semibold uppercase tracking-[0.2em] text-white/80">
+              <h2 className="text-base font-semibold uppercase tracking-[0.2em] text-[#3d485c]">
                 Preview Mode
               </h2>
               <div className="flex items-center gap-2">
@@ -1863,7 +1865,7 @@ export default function CreateLesson({
                   <button
                     onClick={() => void handlePublishToggle("draft")}
                     disabled={publishing}
-                    className="rounded-full border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-200 transition hover:bg-yellow-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-full border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-[#c27c00] transition hover:bg-yellow-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {publishing ? "Saving..." : "Unpublish"}
                   </button>
@@ -1887,7 +1889,7 @@ export default function CreateLesson({
               <>
                 {/* Entry: centered lesson card. Click "Start →" to begin walkthrough. */}
                 <div className="flex justify-center pt-6">
-                  <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_30px_80px_-30px_rgba(138,63,252,0.45)]">
+                  <div className="w-full max-w-md overflow-hidden rounded-3xl border border-[rgba(28,37,51,0.12)] bg-white shadow-[0_30px_80px_-30px_rgba(138,63,252,0.45)]">
                     <div className="relative aspect-[16/10] overflow-hidden">
                       {lessonForm.coverImagePreview ? (
                         <img
@@ -1896,7 +1898,7 @@ export default function CreateLesson({
                           className="absolute inset-0 h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-900/40 to-black text-sm text-white/40">
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[rgba(138,63,252,0.12)] to-[#f7f5ff] text-sm text-[#98a0b4]">
                           Add a cover image to preview
                         </div>
                       )}
@@ -1905,18 +1907,18 @@ export default function CreateLesson({
                       </span>
                     </div>
                     <div className="space-y-4 p-6">
-                      <h3 className="text-xl font-bold leading-tight text-white">
+                      <h3 className="text-xl font-bold leading-tight text-[#1c2533]">
                         {lessonForm.title || "Untitled Lesson"}
                       </h3>
-                      <p className="text-sm leading-relaxed text-white/70">
+                      <p className="text-sm leading-relaxed text-[#3d485c]">
                         {lessonForm.description || "No description provided."}
                       </p>
                       <div className="space-y-2 pt-2">
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/50">
+                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#69728a]">
                           <span>Progress</span>
                           <span>0/{combinedContent.length || 0} Lessons</span>
                         </div>
-                        <div className="h-1 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-1 overflow-hidden rounded-full bg-[#f4f1fc]">
                           <div className="h-full w-0 rounded-full bg-[#8B3EFE]" />
                         </div>
                       </div>
@@ -1938,7 +1940,7 @@ export default function CreateLesson({
                 </div>
 
                 {combinedContent.length === 0 && (
-                  <p className="text-center text-xs text-amber-300">
+                  <p className="text-center text-xs text-[#c27c00]">
                     Add at least one content block in the Content step before publishing.
                   </p>
                 )}
@@ -1957,25 +1959,25 @@ export default function CreateLesson({
 
                   return (
                     <div className="flex justify-center pt-2">
-                      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_30px_80px_-30px_rgba(138,63,252,0.45)]">
+                      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-[rgba(28,37,51,0.12)] bg-white shadow-[0_30px_80px_-30px_rgba(138,63,252,0.45)]">
                         {/* Player header: lesson eyebrow + step indicator + close */}
-                        <div className="flex items-center justify-between gap-3 border-b border-white/5 px-6 py-4">
+                        <div className="flex items-center justify-between gap-3 border-b border-[rgba(28,37,51,0.12)] px-6 py-4">
                           <div>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-purple-300">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#8a3ffc]">
                               Learn · {(lessonForm.title || "Untitled Lesson").toUpperCase()}
                             </p>
-                            <p className="mt-1 text-base font-semibold text-white">
+                            <p className="mt-1 text-base font-semibold text-[#1c2533]">
                               {lessonForm.title || "Untitled Lesson"}
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-white/60">
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#69728a]">
                               Step {idx + 1}/{total}
                             </span>
                             <button
                               type="button"
                               onClick={exit}
-                              className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/80 transition-colors hover:bg-white/10"
+                              className="rounded-full border border-[rgba(28,37,51,0.12)] bg-[#f4f1fc] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)]"
                             >
                               Close
                             </button>
@@ -1983,7 +1985,7 @@ export default function CreateLesson({
                         </div>
 
                         {/* Progress bar */}
-                        <div className="h-1 overflow-hidden bg-white/5">
+                        <div className="h-1 overflow-hidden bg-[#f4f1fc]">
                           <div
                             className="h-full bg-gradient-to-r from-cyan-300 to-[#8B3EFE] transition-all duration-300"
                             style={{ width: `${progress}%` }}
@@ -1997,7 +1999,7 @@ export default function CreateLesson({
                             onClick={goPrev}
                             disabled={idx === 0}
                             aria-label="Previous step"
-                            className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/15 bg-black/60 p-2 text-white/80 transition-colors hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-30"
+                            className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-[rgba(28,37,51,0.12)] bg-white p-2 text-[#3d485c] transition-colors hover:bg-[#f4f1fc] disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             <ChevronLeft className="h-5 w-5" />
                           </button>
@@ -2006,7 +2008,7 @@ export default function CreateLesson({
                             onClick={goNext}
                             disabled={idx === total - 1}
                             aria-label="Next step"
-                            className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/15 bg-black/60 p-2 text-white/80 transition-colors hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-30"
+                            className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-[rgba(28,37,51,0.12)] bg-white p-2 text-[#3d485c] transition-colors hover:bg-[#f4f1fc] disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             <ChevronLeft className="h-5 w-5 rotate-180" />
                           </button>
@@ -2020,17 +2022,17 @@ export default function CreateLesson({
                                     <Trophy className={`h-16 w-16 ${trophyColorClass(step.trophy)}`} />
                                   )}
                                   {step.header && (
-                                    <p className="text-lg font-bold leading-snug text-white">
+                                    <p className="text-lg font-bold leading-snug text-[#1c2533]">
                                       {step.header}
                                     </p>
                                   )}
                                   {step.body && (
-                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/85">
+                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#3d485c]">
                                       {step.body}
                                     </p>
                                   )}
                                   {!step.trophy && !step.header && !step.body && (
-                                    <p className="text-sm text-white/60">
+                                    <p className="text-sm text-[#69728a]">
                                       {step.kind === "intro" ? "Intro card" : "Outro card"} (empty — fill it in on the Content step)
                                     </p>
                                   )}
@@ -2039,7 +2041,7 @@ export default function CreateLesson({
 
                               {/* Mini lesson (paragraph) */}
                               {step.kind === "mini" && (
-                                <p className="whitespace-pre-wrap text-base leading-relaxed text-white">
+                                <p className="whitespace-pre-wrap text-base leading-relaxed text-[#1c2533]">
                                   {step.text || "(empty paragraph — fill it in on the Content step)"}
                                 </p>
                               )}
@@ -2058,7 +2060,7 @@ export default function CreateLesson({
                                       />
                                     </div>
                                   ) : (
-                                    <p className="text-sm text-white/70">(no video URL set yet)</p>
+                                    <p className="text-sm text-[#3d485c]">(no video URL set yet)</p>
                                   )}
                                 </div>
                               )}
@@ -2066,7 +2068,7 @@ export default function CreateLesson({
                               {/* Quiz — show options with correct one pre-highlighted */}
                               {step.kind === "question" && (
                                 <div className="flex w-full flex-col gap-4 text-left">
-                                  <h3 className="text-center text-base font-bold uppercase tracking-wide text-white">
+                                  <h3 className="text-center text-base font-bold uppercase tracking-wide text-[#1c2533]">
                                     {step.question.question || "(empty question)"}
                                   </h3>
                                   <div className="flex flex-col gap-2">
@@ -2074,12 +2076,12 @@ export default function CreateLesson({
                                       const isCorrect = option === step.question.solution;
                                       const base = "flex items-center justify-between rounded-lg border px-3 py-2 transition-colors";
                                       const variant = isCorrect
-                                        ? "border-[#00E1A2CC] bg-[#00E1A220] text-white"
-                                        : "border-white/15 bg-white/8 text-white/70";
+                                        ? "border-[#00E1A2CC] bg-[#00E1A220] text-[#1c2533]"
+                                        : "border-[rgba(28,37,51,0.12)] bg-[#f4f1fc] text-[#3d485c]";
                                       return (
                                         <div key={`${step.question._id}-${i}`} className={`${base} ${variant}`}>
                                           <span className="flex items-center gap-2 min-w-0">
-                                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded bg-white/15 text-[10px] font-bold text-white">
+                                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded bg-[#f4f1fc] text-[10px] font-bold text-[#1c2533]">
                                               {String.fromCharCode(65 + i)}
                                             </span>
                                             <span className="break-words text-sm leading-snug capitalize">
@@ -2095,7 +2097,7 @@ export default function CreateLesson({
                                       );
                                     })}
                                   </div>
-                                  <p className="text-center text-[11px] text-white/60">
+                                  <p className="text-center text-[11px] text-[#69728a]">
                                     Preview shows the correct answer pre-revealed. Learners tap to answer.
                                   </p>
                                 </div>
@@ -2109,11 +2111,11 @@ export default function CreateLesson({
                                       lessonForm.completionTrophy || "gold",
                                     )}`}
                                   />
-                                  <p className="text-2xl font-bold text-white">Congratulations!</p>
-                                  <p className="max-w-md whitespace-pre-wrap text-sm leading-relaxed text-white/85">
+                                  <p className="text-2xl font-bold text-[#1c2533]">Congratulations!</p>
+                                  <p className="max-w-md whitespace-pre-wrap text-sm leading-relaxed text-[#3d485c]">
                                     You have mastered {lessonForm.title.trim() || "this lesson"}
                                   </p>
-                                  <span className="mt-2 inline-flex items-center rounded-full bg-white/15 px-4 py-1.5 text-sm font-semibold text-white">
+                                  <span className="mt-2 inline-flex items-center rounded-full bg-[#f4f1fc] px-4 py-1.5 text-sm font-semibold text-[#1c2533]">
                                     +{Number(lessonForm.reward) || 0} XP
                                   </span>
                                   <button
@@ -2140,13 +2142,13 @@ export default function CreateLesson({
                                   i === idx
                                     ? "w-6 bg-[#8B3EFE]"
                                     : i < idx
-                                    ? "w-1.5 bg-white/40"
-                                    : "w-1.5 bg-white/15"
+                                    ? "w-1.5 bg-[#f4f1fc]"
+                                    : "w-1.5 bg-[#f4f1fc]"
                                 }`}
                               />
                             ))}
                             {total > 12 && (
-                              <span className="ml-1 text-[10px] font-mono text-white/40">+{total - 12}</span>
+                              <span className="ml-1 text-[10px] font-mono text-[#69728a]">+{total - 12}</span>
                             )}
                           </div>
                           {idx < total - 1 ? (
@@ -2180,13 +2182,13 @@ export default function CreateLesson({
       {/* Confirm dialog (delete prompts) */}
       {confirmDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d0d14] p-6 shadow-2xl">
-            <h3 className="mb-2 text-base font-semibold text-white">{confirmDialog.title}</h3>
-            <p className="mb-6 text-sm leading-relaxed text-white/80">{confirmDialog.message}</p>
+          <div className="w-full max-w-sm rounded-2xl border border-[rgba(28,37,51,0.12)] bg-white p-6 shadow-2xl">
+            <h3 className="mb-2 text-base font-semibold text-[#1c2533]">{confirmDialog.title}</h3>
+            <p className="mb-6 text-sm leading-relaxed text-[#3d485c]">{confirmDialog.message}</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setConfirmDialog(null)}
-                className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white/70 transition-colors hover:bg-white/15"
+                className="rounded-lg bg-[#f4f1fc] px-4 py-2 text-sm text-[#3d485c] transition-colors hover:bg-[rgba(138,63,252,0.06)]"
               >
                 Cancel
               </button>
@@ -2196,7 +2198,7 @@ export default function CreateLesson({
                   setConfirmDialog(null);
                   void (fn as () => void | Promise<void>)();
                 }}
-                className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-[#1c2533] transition-colors ${
                   confirmDialog.confirmTone === "primary"
                     ? "bg-[#8a3ffc] hover:bg-[#7a2feb]"
                     : "bg-red-600/80 hover:bg-red-600"
@@ -2212,11 +2214,11 @@ export default function CreateLesson({
       {/* Publish Payment Modal */}
       {showPublishModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0d0d14] w-full max-w-md border border-purple-500/20 p-6 rounded-2xl relative shadow-[0_0_60px_rgba(131,58,253,0.2)] animate-modal-pop">
+          <div className="bg-white w-full max-w-md border border-purple-500/20 p-6 rounded-2xl relative shadow-[0_0_60px_rgba(131,58,253,0.2)] animate-modal-pop">
 
             <button
               onClick={() => { setShowPublishModal(false); setPaymentTxHash(""); }}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all text-lg leading-none"
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-[#f4f1fc] hover:bg-[rgba(138,63,252,0.06)] text-[#69728a] hover:text-[#1c2533] transition-all text-lg leading-none"
             >
               ×
             </button>
@@ -2230,31 +2232,31 @@ export default function CreateLesson({
             </div>
 
             <div className="text-center mb-6">
-              <h2 className="text-xl font-semibold text-white">
+              <h2 className="text-xl font-semibold text-[#1c2533]">
                 Lesson Launch Fee
               </h2>
-              <p className="text-white/70 mt-2">
+              <p className="text-[#3d485c] mt-2">
                 Pay the lesson launch fee to publish this lesson and make it available for participants.
               </p>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+            <div className="bg-[#f4f1fc] border border-[rgba(28,37,51,0.12)] rounded-xl p-4 mb-4">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-semibold text-sm">Lesson Launch Fee</span>
-                <span className="text-purple-400 font-bold text-sm">1 $TRUST</span>
+                <span className="text-[#1c2533] font-semibold text-sm">Lesson Launch Fee</span>
+                <span className="text-[#8a3ffc] font-bold text-sm">1 $TRUST</span>
               </div>
-              <p className="text-white/60 text-xs mb-3">
+              <p className="text-[#69728a] text-xs mb-3">
                 A one-time fee of 1 $TRUST is required to launch and publish this lesson.
               </p>
 
               {paymentTxHash ? (
                 <div className="flex items-center gap-2 bg-green-900/40 border border-green-600/50 rounded-lg px-3 py-2">
-                  <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-4 h-4 text-[#00a87c] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                   <div className="min-w-0">
-                    <p className="text-green-400 text-xs font-semibold">Payment confirmed</p>
-                    <p className="text-white/40 text-[10px] truncate">{paymentTxHash}</p>
+                    <p className="text-[#00a87c] text-xs font-semibold">Payment confirmed</p>
+                    <p className="text-[#69728a] text-[10px] truncate">{paymentTxHash}</p>
                   </div>
                 </div>
               ) : (
@@ -2281,7 +2283,7 @@ export default function CreateLesson({
                   className="w-full flex items-center justify-center gap-2 bg-[#8B3EFE] hover:bg-[#7b35e6] disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-4 py-2 transition"
                 >
                   {paymentLoading ? (
-                    <><span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Waiting for wallet…</>
+                    <><span className="inline-block w-4 h-4 border-2 border-[rgba(28,37,51,0.12)] border-t-white rounded-full animate-spin" />Waiting for wallet…</>
                   ) : (
                     <>Pay 1 $TRUST</>
                   )}
@@ -2308,7 +2310,7 @@ export default function CreateLesson({
 
             <button
               onClick={() => { setShowPublishModal(false); setPaymentTxHash(""); }}
-              className="mt-2 w-full py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-sm font-medium transition-all"
+              className="mt-2 w-full py-2.5 px-4 rounded-xl bg-[#f4f1fc] hover:bg-[rgba(138,63,252,0.06)] border border-[rgba(28,37,51,0.12)] text-[#3d485c] hover:text-[#1c2533] text-sm font-medium transition-all"
             >
               Cancel
             </button>

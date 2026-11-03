@@ -2,6 +2,7 @@ import { WalletSchema, Wallet } from "../schemas/wallet.schema";
 import { ProjectSchema, Project } from "../schemas/project.schema";
 import { UserSchema, type User } from "../schemas/user.schema";
 import { buildUrl } from "./queryClient";
+import { resilientFetch } from "@/lib/resilientFetch";
 
 // Prefer configured remote backends, otherwise use the local server endpoints.
 const WALLETS_BASE = process.env.NEXT_PUBLIC_WALLETS_API_URL || "";
@@ -27,7 +28,7 @@ async function safeFetch(url: string, opts: any) {
   } catch (e) {
     // ignore
   }
-  const res = await fetch(fullUrl, finalOpts);
+  const res = await resilientFetch(fullUrl, finalOpts);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Remote DB error ${res.status}: ${text}`);

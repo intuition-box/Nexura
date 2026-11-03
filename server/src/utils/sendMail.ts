@@ -5,6 +5,8 @@ import hbs, {
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 import logger from "@/config/logger";
+import { randomUUID } from "crypto";
+import { withRetry, fetchWithRetry } from "@/utils/resilience";
 import {
   EMAIL_USER,
   EMAIL_PASSWORD,
@@ -13,6 +15,9 @@ import {
   SMTP_HOST,
   SMTP_PORT,
   SMTP_SECURE,
+  RESEND_API_KEY,
+  RESEND_FROM,
+  trustedOrigin,
 } from "./env.utils";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,16 +43,72 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const directInviteTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASSWORD,
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000,
-});
+// Invite delivery tries each route in turn. Some hosts block one SMTP port but not the other,
+// and short timeouts keep a blocked port from hanging the request for minutes.
+const inviteSmtpRoutes = (() => {
+  const routes = [
+    { host: smtpHost, port: smtpPort, secure: smtpSecure },
+    { host: "smtp.gmail.com", port: 465, secure: true },
+    { host: "smtp.gmail.com", port: 587, secure: false },
+  ];
+  const seen = new Set<string>();
+  return routes.filter(r => {
+    const key = `${r.host}:${r.port}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(r => ({
+    label: `${r.host}:${r.port}`,
+    transporter: nodemailer.createTransport({
+      ...r,
+      requireTLS: !r.secure,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
+      auth: { user: EMAIL_USER, pass: EMAIL_PASSWORD },
+      tls: { servername: r.host },
+    }),
+  }));
+})();
+
+const isConnectionError = (error: any) =>
+  ["ETIMEDOUT", "ECONNECTION", "ESOCKET", "ECONNREFUSED", "ECONNRESET", "EDNS", "ENETUNREACH", "EHOSTUNREACH"].includes(error?.code)
+  || /timeout|timed out|connect/i.test(error?.message ?? "");
+
+/** Sends through the main SMTP route, retrying brief connection failures with backoff. */
+const sendMailWithRetry = (mail: Parameters<typeof transporter.sendMail>[0]) =>
+  withRetry(() => transporter.sendMail(mail), { label: "email (SMTP)", shouldRetry: isConnectionError });
+
+async function sendViaResend(mail: { to: string; subject: string; html: string; text: string }) {
+  // The idempotency key makes a retried send deliver one email, never two
+  const res = await fetchWithRetry("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ from: RESEND_FROM || EMAIL_USER, ...mail }),
+  }, { timeoutMs: 15000, retries: 2, label: "email (Resend)" });
+  if (!res.ok) throw new Error(`Resend refused the email (${res.status}): ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Sends an invite: Resend's HTTPS API when configured, otherwise each SMTP route until one connects. */
+async function deliverInvite(mail: { to: string; subject: string; html: string; text: string }) {
+  if (RESEND_API_KEY) {
+    await sendViaResend(mail);
+    return;
+  }
+  let lastError: any;
+  for (const route of inviteSmtpRoutes) {
+    try {
+      // One quick retry on this route before moving to the next
+      await withRetry(() => route.transporter.sendMail({ from: EMAIL_USER, ...mail } as MailOptions), { retries: 1, label: `invite email via ${route.label}`, shouldRetry: isConnectionError });
+      return;
+    } catch (error: any) {
+      lastError = error;
+      logger.error(`Invite email via ${route.label} failed: ${error?.code ?? ""} ${error?.message}`);
+      if (!isConnectionError(error)) break; // wrong password etc. won't be fixed by another port
+    }
+  }
+  throw lastError ?? new Error("no email route is configured");
+}
 
 const options: NodemailerExpressHandlebarsOptions = {
   viewEngine: {
@@ -61,9 +122,9 @@ transporter.use("compile", hbs(options));
 
 export const sendEmailToAdmin = async (email: string, code: string, origin?: string) => {
   try {
-    const baseUrl = origin || ADMIN_URL;
+    const baseUrl = trustedOrigin(origin, ADMIN_URL);
     const signUpUrl = `${baseUrl.replace(/\/$/, "")}/?email=${encodeURIComponent(email)}`;
-    await transporter.sendMail({
+    await sendMailWithRetry({
       from: EMAIL_USER,
       to: email,
       subject: "Complete Nexura Admin Setup",
@@ -80,7 +141,7 @@ export const sendEmailToAdmin = async (email: string, code: string, origin?: str
 
 export const resetEmail = async (email: string, link: string) => {
   try {
-    await transporter.sendMail({
+    await sendMailWithRetry({
       from: EMAIL_USER,
       to: email,
       subject: "Reset Password",
@@ -96,8 +157,7 @@ export const resetEmail = async (email: string, link: string) => {
 
 export const resetPasswordOTPEmail = async (email: string, code: string) => {
   try {
-    console.log(`[TEST] OTP for ${email}: ${code}`);
-    await transporter.sendMail({
+    await sendMailWithRetry({
       from: EMAIL_USER,
       to: email,
       subject: "Password Reset Code",
@@ -114,10 +174,10 @@ export const resetPasswordOTPEmail = async (email: string, code: string) => {
 
 export const sendAdminResetEmail = async (email: string, token: string, origin?: string) => {
   try {
-    const baseUrl = (origin || ADMIN_URL).replace(/\/$/, "");
+    const baseUrl = trustedOrigin(origin, ADMIN_URL).replace(/\/$/, "");
     const link = `${baseUrl}/?reset=1&token=${encodeURIComponent(token)}`;
 
-    await transporter.sendMail({
+    await sendMailWithRetry({
       from: EMAIL_USER,
       to: email,
       subject: "Reset Admin Password",
@@ -133,11 +193,10 @@ export const sendAdminResetEmail = async (email: string, token: string, origin?:
 
 export const addHubAdminEmail = async (email: string, code: string, origin?: string) => {
   try {
-    const baseUrl = origin || CLIENT_URL;
+    const baseUrl = trustedOrigin(origin, CLIENT_URL);
     const signUpUrl = `${baseUrl}/studio/register?email=${encodeURIComponent(email)}`;
     logger.info(`Sending admin invite to ${email} with link ${signUpUrl}`);
-    await directInviteTransporter.sendMail({
-      from: EMAIL_USER,
+    await deliverInvite({
       to: email,
       subject: "Hub admin setup",
       html: `
@@ -154,7 +213,7 @@ export const addHubAdminEmail = async (email: string, code: string, origin?: str
         </div>
       `,
       text: `You have been invited to join a hub on Nexura Studio as an admin.\n\nYour access code is: ${code}\n\nComplete your setup here: ${signUpUrl}`,
-    } as MailOptions);
+    });
     logger.info(`Admin invite email sent successfully to ${email}`);
   } catch (error: any) {
     logger.error(`Failed to send admin invite email to ${email}:`, error.message);
@@ -164,7 +223,7 @@ export const addHubAdminEmail = async (email: string, code: string, origin?: str
 
 export const sendOTPConfirmEmail = async ({ email, code }: { email: string, code: string }) => {
   try {
-    await transporter.sendMail({
+    await sendMailWithRetry({
       from: EMAIL_USER,
       to: email,
       subject: "Your Nexura Verification Code",

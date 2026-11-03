@@ -6,6 +6,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface Campaign {
+  /** What the reward pool pays in (TRUST, USDC, …); older campaigns have none and pay TRUST */
+  rewardAsset?: { token?: string; network?: string };
   _id: string;
   title: string;
   description: string;
@@ -186,7 +188,7 @@ export default function HeroCampaign({ campaigns }: HeroCampaignProps) {
                 <span className="text-white font-bold text-sm sm:text-base break-words">
                   {Number(currentCampaign.reward.xp) > 0 && `${currentCampaign.reward.xp} XP`}
                   {Number(currentCampaign.reward.xp) > 0 && trustReward > 0 && " + "}
-                  {trustReward > 0 && `${trustReward} TRUST`}
+                  {trustReward > 0 && `${trustReward} ${currentCampaign.rewardAsset?.token || "TRUST"}`}
                 </span>
               </div>
             </div>

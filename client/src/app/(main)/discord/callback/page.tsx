@@ -13,10 +13,10 @@ function DiscordCallbackInner() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const discord_id = searchParams.get("discord_id");
+    const ticket = searchParams.get("ticket");
     const username = searchParams.get("username");
 
-    if (!discord_id || !username) {
+    if (!ticket || !username) {
       alert("No id or username returned from server.");
       router.push("/profile/edit"); // redirect to edit profile if values is missing
       return;
@@ -24,9 +24,9 @@ function DiscordCallbackInner() {
 
     // update user
     (async () => {
-      console.log("[ACTION] discordCallback", { discord_id, username });
+      console.log("[ACTION] discordCallback", { username });
       try {
-        const { user } = await apiRequestV2("GET", `/api/discord/update?discord_id=${discord_id}&username=${username}`);
+        const { user } = await apiRequestV2("GET", `/api/discord/update?ticket=${encodeURIComponent(ticket)}`);
 
         setUser(user);
 

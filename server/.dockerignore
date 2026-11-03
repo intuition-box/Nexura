@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.*
+!.env.example
+qa-*
+*.mjs
+*.bak
+*.log
+.git
+scripts
+README.md

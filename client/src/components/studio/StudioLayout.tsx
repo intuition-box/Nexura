@@ -1,36 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
 import StudioBackground from "@/components/StudioBackground";
 import StudioSidebar from "./StudioSidebar";
-import { isProjectSignedIn, clearProjectSession, projectApiRequest } from "@/lib/projectApi";
-import { getStoredProjectToken } from "@/lib/projectApi";
+import StudioHeader from "./StudioHeader";
+import SignerReminder from "./SignerReminder";
+import { isProjectSignedIn, projectApiRequest } from "@/lib/projectApi";
+import { useSessionExpiryRedirect } from "./useProjectSession";
+import { PRESENCE_HEARTBEAT_MS } from "@/lib/adminGovernance";
 
-type TabType = "hubProfile" | "campaignSubmissions" | "adminManagement" | "campaignsTab";
+type TabType = "hubProfile" | "accountSettings" | "campaignSubmissions" | "adminManagement" | "campaignsTab" | "campaignsFlow";
 
 interface StudioLayoutProps {
   children: React.ReactNode;
   title?: string;
-  onLogout?: () => void;
+  /** Hide the studio header (title, bell, wallet, back to main app) and render children edge-to-edge, for pages that bring their own header. */
+  hideHeader?: boolean;
+  /** Content fills the column without the default padding and max width. Used by the new campaigns flow. */
+  bleed?: boolean;
 }
 
 /**
  * Shared layout wrapper for all /studio-dashboard/* pages.
  * Renders the StudioSidebar + header chrome around the given children.
  */
-export default function StudioLayout({ children, title = "Nexura Studio", onLogout }: StudioLayoutProps) {
+export default function StudioLayout({ children, title = "Nexura Studio", hideHeader = false, bleed = false }: StudioLayoutProps) {
   const pathname = usePathname();
-  const router = useRouter();
 
   // Determine active tab from the current URL
   const deriveTab = (): TabType => {
     if (pathname.includes("hub-profile")) return "hubProfile";
+    if (pathname.includes("account-settings")) return "accountSettings";
     if (pathname.includes("admin-management")) return "adminManagement";
     if (pathname === "/studio-dashboard") return "campaignSubmissions";
-    if (pathname.includes("campaigns-tab") || pathname.includes("create-new-campaign") || pathname.includes("my-campaign"))
+    if (pathname.includes("campaigns-flow")) return "campaignsFlow";
+    if (pathname.includes("campaigns-tab") || pathname.includes("create-new-campaign") || pathname.includes("campaign-preview") || pathname.includes("my-campaign"))
       return "campaignsTab";
     return "campaignSubmissions";
   };
@@ -41,22 +46,19 @@ export default function StudioLayout({ children, title = "Nexura Studio", onLogo
     setActiveTab(deriveTab());
   }, [pathname]);
 
-  // Auth guard
-  useEffect(() => {
-    if (!isProjectSignedIn()) {
-      router.push("/studio");
-    }
-  }, []);
+  useSessionExpiryRedirect();
 
-  const handleLogout = () => {
-    console.log("[ACTION] StudioLayout.handleLogout — project/hub sign-out");
-    if (getStoredProjectToken()) {
-      projectApiRequest({ method: "POST", endpoint: "/hub/logout" }).catch(() => {});
-    }
-    clearProjectSession();
-    onLogout?.();
-    router.push("/discover");
-  };
+  // Heartbeat: any authenticated request records activity, so teammates see this admin online
+  useEffect(() => {
+    if (!isProjectSignedIn()) return;
+    const ping = () => {
+      if (document.visibilityState !== "visible") return;
+      projectApiRequest({ method: "GET", endpoint: "/hub/me" }).catch(() => {});
+    };
+    const id = setInterval(ping, PRESENCE_HEARTBEAT_MS);
+    document.addEventListener("visibilitychange", ping);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", ping); };
+  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -66,33 +68,22 @@ export default function StudioLayout({ children, title = "Nexura Studio", onLogo
         <StudioSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="hidden md:flex h-16 border-b border-white/10 items-center justify-between px-6 backdrop-blur-sm bg-black/30">
-            <div className="flex items-center gap-4 flex-1">
-              <h2 className="text-lg font-semibold text-white whitespace-nowrap min-w-[200px]">{title}</h2>
+          {!hideHeader && (
+            <div className="hidden bg-[#f7f5ff] md:block">
+              <StudioHeader title={title} />
             </div>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" className="text-white/70 hover:text-white hover:bg-white/5">
-                <Bell className="w-5 h-5" />
-              </Button>
-              <div className="h-6 w-px bg-white/10 mx-2" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="text-white/70 hover:text-white hover:text-red-400"
-              >
-                Logout
-              </Button>
-            </div>
-          </header>
+          )}
 
-          <main className="flex-1 overflow-y-auto pt-4 pb-8 px-4 md:pt-8 md:pb-8 md:px-8 relative bg-black/20">
-            <div className="max-w-7xl mx-auto">{children}</div>
-          </main>
+          {hideHeader || bleed ? (
+            <main className="flex-1 overflow-y-auto relative bg-[#f7f5ff] text-[#1c2533] pb-24 md:pb-0">{children}</main>
+          ) : (
+            <main className="flex-1 overflow-y-auto pt-16 pb-24 px-4 md:pt-8 md:pb-8 md:px-9 relative bg-[#f7f5ff] text-[#1c2533]" style={{ fontFamily: "'Geist', 'Inter', sans-serif" }}>
+              <div className="max-w-7xl mx-auto">{children}</div>
+            </main>
+          )}
         </div>
       </div>
+      <SignerReminder />
     </div>
   );
 }
-
-

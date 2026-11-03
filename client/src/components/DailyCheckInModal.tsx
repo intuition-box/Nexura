@@ -99,17 +99,15 @@ export default function DailyCheckInModal({ open, onOpenChange, onCheckInSuccess
     }
   }, [justClaimed]);
 
-  // Trigger XP counter animation after GIF finishes playing
   useEffect(() => {
-    if (gifLoaded && claimRewardXp > 0) {
-      const timer = setTimeout(() => {
-        animateXp(claimRewardXp);
-        // Stop the GIF from looping by hiding it after one playthrough
-        setGifDone(true);
-      }, CHEST_GIF_DURATION_MS);
-      return () => clearTimeout(timer);
-    }
-  }, [gifLoaded, claimRewardXp]);
+    if (claimRewardXp > 0) animateXp(claimRewardXp);
+  }, [claimRewardXp]);
+
+  useEffect(() => {
+    if (!gifLoaded) return;
+    const timer = setTimeout(() => setGifDone(true), CHEST_GIF_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [gifLoaded]);
 
 
   ///////////// TEST
@@ -271,6 +269,13 @@ const MILESTONES = [
   { day: 45, xp: 5000 },
   { day: 60, xp: 10000 },
   { day: 90, xp: 20000 },
+  { day: 130, xp: 22500 },
+  { day: 170, xp: 25000 },
+  { day: 210, xp: 27500 },
+  { day: 250, xp: 30000 },
+  { day: 290, xp: 32500 },
+  { day: 330, xp: 35000 },
+  { day: 365, xp: 50000 },
 ];
 
 // current milestone user just passed or is working toward
@@ -282,6 +287,9 @@ const currentMilestone =
 // next milestone
 const nextMilestone =
   MILESTONES.find(m => m.day > streak) || null;
+const nextIndex = nextMilestone ? MILESTONES.indexOf(nextMilestone) : MILESTONES.length - 1;
+const windowStart = Math.max(0, Math.min(nextIndex - 2, MILESTONES.length - 6));
+const visibleMilestones = MILESTONES.slice(windowStart, windowStart + 6);
 
 // progress
 const progress = useMemo(() => {
@@ -592,6 +600,12 @@ const handleClaimReward = async () => {
     )}
   </div>
 
+  {canOpenChest && (
+    <video muted playsInline preload="auto" aria-hidden className="hidden">
+      <source src="/chest.webm" type="video/webm" />
+      <source src="/chest.mp4" type="video/mp4" />
+    </video>
+  )}
   {/* OPEN CHEST */}
   {canOpenChest && (
     <button
@@ -672,7 +686,7 @@ const handleClaimReward = async () => {
   {/* TRACK */}
   <div className="relative flex items-start w-full">
 
-    {MILESTONES.map((m, i, arr) => {
+    {visibleMilestones.map((m, i, arr) => {
       const isLast = i === arr.length - 1;
 
 // user has already redeemed this milestone
@@ -913,9 +927,8 @@ const isUpcoming = streak < m.day;
 
           {/* AFTER CLAIM → PLAY GIF (once) */}
           {claimed && !gifDone && (
-            <img
-              src="/CHEST GIF.gif"
-              alt=""
+            <video
+              autoPlay muted playsInline preload="auto"
               className="w-full h-auto object-cover"
               style={{
                 WebkitMaskImage:
@@ -923,18 +936,14 @@ const isUpcoming = streak < m.day;
                 maskImage:
                   "radial-gradient(ellipse 72% 72% at 50% 48%, #000 55%, transparent 92%)",
               }}
-              onLoad={() => setGifLoaded(true)}
-              onError={() => {
-                setGifDone(true);
-                animateXp(claimRewardXp);
-              }}
-            />
+              onPlaying={() => setGifLoaded(true)}
+            >
+              <source src="/chest.webm" type="video/webm" />
+              <source src="/chest.mp4" type="video/mp4" onError={() => setGifDone(true)} />
+            </video>
           )}
         </div>
 
-        {/* XP BELOW MEDIA (NOT INSIDE) — always shown once claimed so the
-            counter reserves its space (no layout shift). It sits at +0 XP
-            during the reward video, then counts up once the video ends. */}
         {claimed && (
           <div className="mb-3">
             <div className="text-[#E990F7] text-3xl font-bold">

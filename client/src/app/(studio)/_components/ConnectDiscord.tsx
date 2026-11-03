@@ -24,7 +24,7 @@ export default function ConnectDiscord() {
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center">
-      <Card className="w-full max-w-2xl rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-white shadow-[0_24px_80px_rgba(15,15,35,0.45)] backdrop-blur-xl">
+      <Card className="w-full max-w-2xl rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.09)] bg-white p-8 text-[#1c2533] shadow-none">
         <div className="mb-8 flex items-start justify-between gap-6">
           <div className="space-y-4">
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[#8B3EFE]/40 bg-[#8B3EFE]/15">
@@ -32,7 +32,7 @@ export default function ConnectDiscord() {
             </div>
             <div className="space-y-2">
               <CardTitle className="text-3xl font-semibold">Connect Discord</CardTitle>
-              <CardDescription className="max-w-xl text-sm leading-6 text-white/65">
+              <CardDescription className="max-w-xl text-sm leading-6 text-[#69728a]">
                 Authorize your project Discord account, pick the server you manage, and finish setup without dropping back into the signup flow.
               </CardDescription>
             </div>
@@ -49,7 +49,7 @@ export default function ConnectDiscord() {
           </div>
         </div>
 
-        <div className="grid gap-4 rounded-2xl border border-white/10 bg-black/25 p-5 text-sm text-white/70">
+        <div className="grid gap-4 rounded-[20px] border-[0.833px] border-[rgba(28,37,51,0.09)] bg-[#f4f1fc] p-5 text-sm text-[#3d485c]">
           <p>Discord will ask you to approve access to the servers you manage.</p>
           <p>You can skip this for now and reconnect later when you want to build Discord-related tasks.</p>
           <p>After approval, you'll come right back to the studio to choose the server.</p>
@@ -60,7 +60,7 @@ export default function ConnectDiscord() {
             type="button"
             variant="ghost"
             onClick={() => router.push(returnPath)}
-            className="border border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/10 hover:text-white"
+            className="rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f7f4fe] text-[#1c2533] hover:bg-[#efeafb] hover:text-[#1c2533]"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Studio
@@ -70,7 +70,7 @@ export default function ConnectDiscord() {
               type="button"
               variant="ghost"
               onClick={() => router.push("/studio-dashboard")}
-              className="border border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/10 hover:text-white"
+              className="rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f7f4fe] text-[#1c2533] hover:bg-[#efeafb] hover:text-[#1c2533]"
             >
               Skip for Now
             </Button>
@@ -78,7 +78,7 @@ export default function ConnectDiscord() {
           <Button
             type="button"
             onClick={() => beginStudioDiscordConnect(returnPath)}
-            className="bg-[#8B3EFE] text-white hover:bg-[#7b35e6]"
+            className="rounded-[40px] bg-[#8B3EFE] text-white hover:bg-[#7b35e6]"
           >
             Connect Discord
             <ArrowRight className="ml-2 h-4 w-4" />

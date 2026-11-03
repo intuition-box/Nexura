@@ -1,4 +1,5 @@
 "use client";
+import StudioLoader from "@/components/studio/StudioLoader";
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
@@ -109,15 +110,13 @@ export default function ConnectedDiscord() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center text-white/70">
-        <Loader2 className="h-6 w-6 animate-spin text-[#8B3EFE]" />
-      </div>
+      <StudioLoader message="Loading Discord…" />
     );
   }
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center">
-      <Card className="w-full max-w-3xl rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-white shadow-[0_24px_80px_rgba(15,15,35,0.45)] backdrop-blur-xl">
+      <Card className="w-full max-w-3xl rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.09)] bg-white p-8 text-[#1c2533] shadow-none">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10">
@@ -125,28 +124,28 @@ export default function ConnectedDiscord() {
             </div>
             <div className="space-y-2">
               <CardTitle className="text-3xl font-semibold">Finish Discord Setup</CardTitle>
-              <CardDescription className="max-w-2xl text-sm leading-6 text-white/65">
+              <CardDescription className="max-w-2xl text-sm leading-6 text-[#69728a]">
                 Your Discord account is authorized. Choose the server you manage and the verification role Nexura should use for studio campaigns.
               </CardDescription>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
+          <div className="rounded-[20px] border-[0.833px] border-[rgba(138,63,252,0.24)] bg-[rgba(138,63,252,0.1)] px-4 py-3 text-sm text-[#6e2bd8]">
             The selected server will be saved directly to this studio hub.
           </div>
         </div>
 
         <div className="grid gap-6">
           <div className="space-y-3">
-            <label className="text-sm font-medium text-white/70">Discord Server</label>
+            <label className="text-[13px] font-semibold text-[#3d485c]">Discord Server</label>
             <div
               onClick={() => setServerOpen((open) => !open)}
-              className="cursor-pointer rounded-2xl border border-white/10 bg-black/25 p-4 transition hover:border-[#8B3EFE]/50"
+              className="cursor-pointer rounded-[20px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f4f1fc] p-4 transition hover:border-[#8B3EFE]/50"
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-base font-semibold text-white">Select server</p>
-                  <p className="mt-1 text-sm text-white/55">
+                  <p className="text-base font-semibold text-[#1c2533]">Select server</p>
+                  <p className="mt-1 text-sm text-[#69728a]">
                     {selectedServer.name || "Choose an active Discord server"}
                   </p>
                 </div>
@@ -155,9 +154,9 @@ export default function ConnectedDiscord() {
             </div>
 
             {serverOpen && (
-              <div className="space-y-2 rounded-2xl border border-white/10 bg-black/25 p-2">
+              <div className="space-y-2 rounded-[20px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f4f1fc] p-2">
                 {discordData.length === 0 && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
+                  <div className="rounded-[14px] border-[0.833px] border-[rgba(28,37,51,0.09)] bg-white px-4 py-3 text-sm text-[#69728a]">
                     No Discord servers were returned for this account.
                   </div>
                 )}
@@ -169,7 +168,7 @@ export default function ConnectedDiscord() {
                       setSelectedServer(server);
                       setServerOpen(false);
                     }}
-                    className="w-full rounded-xl border border-transparent bg-white/[0.03] px-4 py-3 text-left text-white transition hover:border-[#8B3EFE]/40 hover:bg-white/[0.06]"
+                    className="w-full rounded-[14px] border border-transparent bg-white px-4 py-3 text-left text-[#1c2533] transition hover:border-[#8B3EFE]/40 hover:bg-[#fbfaff]"
                   >
                     {server.name}
                   </button>
@@ -184,7 +183,7 @@ export default function ConnectedDiscord() {
             type="button"
             variant="ghost"
             onClick={handleBack}
-            className="border border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/10 hover:text-white"
+            className="rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f7f4fe] text-[#1c2533] hover:bg-[#efeafb] hover:text-[#1c2533]"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Studio
@@ -195,7 +194,7 @@ export default function ConnectedDiscord() {
               type="button"
               variant="ghost"
               onClick={() => beginStudioDiscordConnect(returnPath)}
-              className="border border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/10 hover:text-white"
+              className="rounded-[40px] border-[0.833px] border-[rgba(28,37,51,0.15)] bg-[#f7f4fe] text-[#1c2533] hover:bg-[#efeafb] hover:text-[#1c2533]"
             >
               Reconnect Discord
             </Button>
@@ -203,7 +202,7 @@ export default function ConnectedDiscord() {
               type="button"
               onClick={completeDiscordSetup}
               disabled={saving}
-              className="bg-[#8B3EFE] text-white hover:bg-[#7b35e6]"
+              className="rounded-[40px] bg-[#8B3EFE] text-white hover:bg-[#7b35e6]"
             >
               {saving ? "Saving..." : "Save Discord Setup"}
               {!saving && <ArrowRight className="ml-2 h-4 w-4" />}

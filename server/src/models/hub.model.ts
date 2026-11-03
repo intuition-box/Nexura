@@ -37,6 +37,10 @@ const hubSchema = new Schema({
     required: false,
     default: ""
   },
+  categories: {
+    type: [String],
+    default: []
+  },
   website: {
     type: String,
     required: false,
@@ -93,10 +97,11 @@ export const hub = mongoose.model("hubs", hubSchema, "projects");
 export const projectModel = mongoose.model("project", hubSchema, "projects");
 
 const hubAdminSchema = new mongoose.Schema({
+  // Not unique: one email can hold accounts in several hubs. The username (name) is unique instead
   email: {
     type: String,
     required: true,
-    unique: true
+    index: true,
   },
   password: {
     type: String,
@@ -122,13 +127,45 @@ const hubAdminSchema = new mongoose.Schema({
     type: Schema.Types.ObjectId,
     ref: 'hubs',
   },
+  // Set by the first wallet action in the hub (see utils/hubWallet.ts); sign-in then needs this wallet
+  linkedWallet: {
+    type: String,
+    default: null,
+  },
+  usernameChanges: {
+    type: Number,
+    default: 0,
+  },
+  // Google Authenticator 2-step verification (secrets are encrypted, see utils/secretBox.ts)
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorSecret: { type: String, default: null },
+  twoFactorPendingSecret: { type: String, default: null },
+  twoFactorLastStep: { type: Number, default: 0 },
   pendingTxHash: {
     type: String,
+    default: null,
+  },
+  // Last authenticated studio request, for the team's online status
+  lastActiveAt: {
+    type: Date,
+    default: null,
+  },
+  // Sessions issued before this stop working (set when the password is reset)
+  passwordChangedAt: {
+    type: Date,
     default: null,
   }
 }, { timestamps: true });
 
 export const hubAdmin = mongoose.model("hub-admins", hubAdminSchema);
+
+const ACTIVITY_WRITE_INTERVAL_MS = 30 * 1000;
+
+/** Records that a studio admin is active. Writes at most every 30 seconds and never blocks the request. */
+export function touchHubAdminActivity(id: string, lastActiveAt?: Date | null) {
+  if (lastActiveAt && Date.now() - new Date(lastActiveAt).getTime() < ACTIVITY_WRITE_INTERVAL_MS) return;
+  hubAdmin.updateOne({ _id: id }, { $set: { lastActiveAt: new Date() } }).catch(() => {});
+}
 
 const userHubSchema = new Schema({
   systemKey: {

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { open, seal } from "@/utils/secretBox";
 
 const tokenSchema = new mongoose.Schema({
   userId: {
@@ -8,16 +9,20 @@ const tokenSchema = new mongoose.Schema({
   },
   accessToken: {
     type: String,
-    required: true
+    required: true,
+    set: seal,
+    get: open,
   },
   refreshToken: {
     type: String,
     required: true,
+    set: seal,
+    get: open,
   },
   createdAt: {
     type: Date,
     default: Date.now
   },
-});
+}, { toJSON: { getters: true }, toObject: { getters: true } });
 
 export const token = mongoose.model("Tokens", tokenSchema);

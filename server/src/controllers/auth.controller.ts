@@ -6,6 +6,7 @@ import {
 	INTERNAL_SERVER_ERROR,
 	NOT_FOUND,
 	OK,
+	UNAUTHORIZED,
 } from "@/utils/status.utils";
 import {
 	DISCORD_CLIENT_ID,
@@ -27,6 +28,12 @@ import { cvModel } from "@/models/cv.models";
 import { token } from "@/models/tokens.model";
 import { bannedUser } from "@/models/bannedUser.model";
 import { REDIS } from "@/utils/redis.utils";
+import { fetchWithRetry } from "@/utils/resilience";
+import { walletLoginProblem } from "@/utils/walletLogin";
+// The same signature also proves the wallet to Nexura Studio: one wallet login for both apps
+import { issueWalletToken } from "@/utils/walletToken";
+import { issueLinkTicket } from "@/models/linkTicket.model";
+import { CONSENT_REQUIRED, readLegalConsent } from "@/utils/legalConsent";
 
 const buildWalletUsernameBase = (address: string) =>
 	`${address.slice(0, 4)}...${address.slice(-4)}`;
@@ -78,7 +85,8 @@ export const discordCallback = async (req: GlobalRequest, res: GlobalResponse) =
 			}
 		});
 
-		res.redirect(DISCORD_CLIENT_REDIRECT_URI + `?discord_id=${id}&username=${username}`);
+		const ticket = await issueLinkTicket("discord", id, username);
+		res.redirect(DISCORD_CLIENT_REDIRECT_URI + `?ticket=${ticket}&username=${encodeURIComponent(username)}`);
 	} catch (error: any) {
 		logger.error(error);
 		console.error("DISCORD TOKEN ERROR STATUS:", error.response?.status)
@@ -131,7 +139,8 @@ export const xCallback = async (req: GlobalRequest, res: GlobalResponse) => {
 			await userExists.save();
 		}
 
-		res.redirect(X_CLIENT_REDIRECT_URI + `?x_id=${id}&username=${username}`);
+		const ticket = await issueLinkTicket("x", id, username);
+		res.redirect(X_CLIENT_REDIRECT_URI + `?ticket=${ticket}&username=${encodeURIComponent(username)}`);
 	} catch (error: any) {
 		logger.error(error);
 		console.error("X TOKEN ERROR STATUS:", error.response?.status)
@@ -168,7 +177,8 @@ export const disconnectX = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
-		await fetch("https://api.x.com/2/oauth2/revoke", {
+		// Revoking twice is harmless, so a brief failure is retried
+		await fetchWithRetry("https://api.x.com/2/oauth2/revoke", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
@@ -177,7 +187,7 @@ export const disconnectX = async (req: GlobalRequest, res: GlobalResponse) => {
 				token: userToken.refreshToken,
 				clientId: X_API_CLIENT_ID,
 			}),
-		});
+		}, { retries: 2, label: "X token revoke" });
 
 		await token.deleteOne({ userId: xId });
 
@@ -218,7 +228,7 @@ export const disconnectDiscord = async (req: GlobalRequest, res: GlobalResponse)
 }
 
 export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
-	const { address, referrer }: { address: string; referrer?: string } =
+	const { address, referrer, message, signature, consent: sentConsent }: { address: string; referrer?: string; message?: string; signature?: string; consent?: unknown } =
 		req.body;
 
 	if (!address) {
@@ -227,6 +237,25 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			.json({ error: "address cannot be empty" });
 		return;
   }
+
+	const consent = readLegalConsent(sentConsent);
+	if (!consent) {
+		res.status(BAD_REQUEST).json({ error: CONSENT_REQUIRED });
+		return;
+	}
+
+	// Proof that the person controls this wallet: without it anyone could sign in as any address
+	try {
+		const problem = await walletLoginProblem(address, message, signature);
+		if (problem) {
+			res.status(UNAUTHORIZED).json({ error: problem });
+			return;
+		}
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't check your wallet signature just now, try again" });
+		return;
+	}
 
   const lowerCaseAddress = address.toLowerCase();
 
@@ -269,7 +298,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 
 			const userReferrer = await user.findOne({ "referral.code": referrer });
 
-			const newUser = new user({ address: lowerCaseAddress, username, referral, dateJoined, location });
+			const newUser = new user({ address: lowerCaseAddress, username, referral, dateJoined, location, legalConsent: consent });
 
 			const id = newUser._id;
 
@@ -292,7 +321,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 				maxAge: 30 * 24 * 60 * 60,
 			});
 
-			res.status(CREATED).json({ message: "user created!", accessToken, user: newUser });
+			res.status(CREATED).json({ message: "user created!", accessToken, user: newUser, walletToken: issueWalletToken(address) });
 			return;
 		}
 
@@ -302,6 +331,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
     req.id = userExists._id as unknown as string;
 
 		userExists.location = location;
+		if (userExists.legalConsent?.version !== consent.version) userExists.legalConsent = consent;
 		await userExists.save();
 
 		res.cookie("refreshToken", refreshToken, {
@@ -310,7 +340,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			maxAge: 30 * 24 * 60 * 60,
 		});
 
-		res.status(200).json({ message: "signed in", accessToken, user: userExists });
+		res.status(200).json({ message: "signed in", accessToken, user: userExists, walletToken: issueWalletToken(address) });
 	} catch (error: any) {
 		logger.error(error);
 
@@ -328,7 +358,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 						secure: true,
 						maxAge: 30 * 24 * 60 * 60,
 					});
-					res.status(200).json({ message: "signed in", accessToken, user: existingUser });
+					res.status(200).json({ message: "signed in", accessToken, user: existingUser, walletToken: issueWalletToken(address) });
 					return;
 				}
 			} catch (innerError) {
@@ -336,7 +366,23 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			}
 		}
 
-		res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message || "Error signing user in" });
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "Error signing user in" });
+	}
+};
+
+export const recordConsent = async (req: GlobalRequest, res: GlobalResponse) => {
+	const consent = readLegalConsent(req.body?.consent);
+	if (!consent) {
+		res.status(BAD_REQUEST).json({ error: CONSENT_REQUIRED });
+		return;
+	}
+
+	try {
+		await user.updateOne({ _id: req.id }, { legalConsent: consent });
+		res.status(OK).json({ message: "consent recorded" });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't save your agreement just now, try again" });
 	}
 };
 

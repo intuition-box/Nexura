@@ -18,7 +18,7 @@ import {
   getPositions,
   getIntuitionAccountActivity
 } from "@/controllers/app.controller";
-import { logout } from "@/controllers/auth.controller";
+import { logout, recordConsent } from "@/controllers/auth.controller";
 import { upload } from "@/config/multer";
 
 const router = Router();
@@ -40,6 +40,7 @@ router
   .post("/restore-streak", restoreStreak)
   .get("/referral-info", referralInfo)
   .post("/logout", logout)
+  .post("/consent", recordConsent)
   .post("/perform-daily-sign-in", performDailySignIn)
   .patch("/update", upload.single("profilePic"), updateUser);
 

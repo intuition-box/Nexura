@@ -20,6 +20,8 @@ export default function StudioGroupLayout({ children }: { children: React.ReactN
       pathname.startsWith("/connect-discord") ||
       pathname.startsWith("/project/connected-discord") ||
       pathname.startsWith("/studio/register") ||
+      pathname.startsWith("/studio/sign-in") ||
+      pathname.startsWith("/studio/sign-up") ||
       pathname.startsWith("/studio/reset-password");
 
     document.body.classList.toggle("studio-theme", isStudioRoute);

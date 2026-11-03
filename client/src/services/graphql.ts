@@ -1,14 +1,15 @@
+import { resilientFetch } from "@/lib/resilientFetch";
 const GRAPHQL_URL = "https://mainnet.intuition.sh/v1/graphql";
 
 type Variables = Record<string, any>;
 
 export const fetchGraphQL = async (query: string, variables: Variables = {}) => {
   console.log("[GRAPHQL] fetchGraphQL", { query, variables });
-  const res = await fetch(GRAPHQL_URL, {
+  const res = await resilientFetch(GRAPHQL_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
-  });
+  }, { retries: 2 }); // queries only read, so retrying is safe
 
   if (!res.ok) {
     throw new Error(`GraphQL error ${res.status}`);

@@ -25,7 +25,7 @@ const mainNavItems = [
   { title: "Leaderboard", icon: "/sidebar-icons/leaderboard.png", href: "/leaderboard", activeClass: "nav-leaderboard-active" },
   { title: "Portal Claims", icon: "/sidebar-icons/portal-claims.png", href: "/portal-claims", activeClass: "nav-portal-claims-active" },
   { title: "Analytics", icon: "/sidebar-icons/analytics.png", href: "/analytics", activeClass: "nav-analytics-active" },
-  { title: "Nexura Studio", icon: "/sidebar-icons/nexura-studio.png", href: "/studio", activeClass: "nav-studio-active" },
+  { title: "Nexura Studio", icon: "/sidebar-icons/nexura-studio.png", href: "/nexura-studio", activeClass: "nav-studio-active" },
 ];
 
 export default function NexuraSidebar() {

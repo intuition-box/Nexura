@@ -102,6 +102,13 @@ const campaignQuestSchema = new Schema({
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "campaign",
 	},
+	// ── Retention campaign builder ──
+	stage: { type: String },          // key of the campaign stage this task belongs to
+	order: { type: Number },          // position within the stage
+	points: { type: Number },
+	taskTypeId: { type: String },     // task catalog id from Create Campaign
+	validationMode: { type: String }, // manual | peer | link | api
+	apiEndpoint: { type: String },
 }, { timestamps: true });
 
 export const campaignQuest = mongoose.model(
