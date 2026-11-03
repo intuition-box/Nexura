@@ -4,6 +4,7 @@ import logger from "@/config/logger";
 import { JWT_SECRET } from "@/utils/env.utils";
 import { devAccess } from "@/models/devAccess.model";
 import { hub, hubAdmin } from "@/models/hub.model";
+import { admin } from "@/models/admin.model";
 import { ADMIN_CAMPAIGN_SYSTEM_KEY } from "@/utils/adminCampaignHub";
 import { BAD_REQUEST, CONFLICT, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_FOUND, OK, UNAUTHORIZED } from "@/utils/status.utils";
 import {
@@ -87,11 +88,18 @@ const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
 const cleanName = (v: unknown) => String(v ?? "").trim().slice(0, 60);
 
 // Members of the official Nexura hub in Studio, by email.
+// The Nexura hub's team: the admin dashboard's admins (who run the Nexura hub) and any Studio
+// accounts attached to the official Nexura hub.
 async function nexuraHubMembers(): Promise<Map<string, string>> {
+  const members = new Map<string, string>();
+  const platform = await admin.find({ verified: true }, { email: 1, username: 1 }).lean() as { email?: string; username?: string }[];
+  for (const a of platform) if (a.email) members.set(String(a.email).toLowerCase(), String(a.username ?? "") || String(a.email).split("@")[0]!);
   const nexura = await hub.findOne({ systemKey: ADMIN_CAMPAIGN_SYSTEM_KEY }, { _id: 1 }).lean() as { _id: unknown } | null;
-  if (!nexura) return new Map();
-  const rows = await hubAdmin.find({ hub: nexura._id }, { email: 1, name: 1 }).lean() as { email?: string; name?: string }[];
-  return new Map(rows.filter(r => r.email).map(r => [String(r.email).toLowerCase(), String(r.name ?? "")]));
+  if (nexura) {
+    const rows = await hubAdmin.find({ hub: nexura._id }, { email: 1, name: 1 }).lean() as { email?: string; name?: string }[];
+    for (const r of rows) if (r.email && !members.has(String(r.email).toLowerCase())) members.set(String(r.email).toLowerCase(), String(r.name ?? ""));
+  }
+  return members;
 }
 
 const toEntry = (r: any, members: Map<string, string>) => ({
