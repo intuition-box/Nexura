@@ -73,13 +73,28 @@ export async function forwardToList<T>(action: string, body: Record<string, unkn
 export const signDevAccessToken = (address: string) =>
   jwt.sign({ purpose: DEV_ACCESS_PURPOSE, address: address.toLowerCase() }, JWT_SECRET, { expiresIn: "7d" });
 
+// Records when each wallet last used the test app, at most once per SEEN_EVERY_MS
+const SEEN_EVERY_MS = 5 * 60 * 1000;
+const lastNoted = new Map<string, number>();
+function noteSeen(req: Request, address: string) {
+  const addr = address.toLowerCase();
+  if (Date.now() - (lastNoted.get(addr) ?? 0) < SEEN_EVERY_MS) return;
+  lastNoted.set(addr, Date.now());
+  const record = isGatedHost(req)
+    ? forwardToList("seen", { address: addr, adminName: "test app" })
+    : devAccess.updateOne({ address: addr }, { $set: { lastSeenAt: new Date() } });
+  Promise.resolve(record).catch(err => { lastNoted.delete(addr); logger.error(err); });
+}
+
 export async function readDevAccess(req: Request): Promise<string | null> {
   const token = req.header(DEV_ACCESS_HEADER);
   if (!token) return null;
   try {
     const claims = jwt.verify(token, JWT_SECRET) as { purpose?: string; address?: string };
     if (claims.purpose !== DEV_ACCESS_PURPOSE || !claims.address) return null;
-    return (await isWhitelisted(claims.address)) ? claims.address : null;
+    if (!(await isWhitelisted(claims.address))) return null;
+    noteSeen(req, claims.address);
+    return claims.address;
   } catch {
     return null;
   }
