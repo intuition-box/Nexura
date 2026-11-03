@@ -8,10 +8,15 @@ const KEY = "nexura_dev_access";
 export type DevAccessRole = { address: string };
 
 export const getDevAccessToken = () => {
-  try { return localStorage.getItem(KEY); } catch { return null; }
+  try { return localStorage.getItem(KEY) ?? sessionStorage.getItem(KEY); } catch { return null; }
 };
-export const setDevAccessToken = (token: string | null) => {
-  try { if (token) localStorage.setItem(KEY, token); else localStorage.removeItem(KEY); } catch { /* storage blocked */ }
+/** With "Keep me signed in" the pass stays for its 7 days; otherwise it ends when the browser closes. */
+export const setDevAccessToken = (token: string | null, remember = true) => {
+  try {
+    localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
+    if (token) (remember ? localStorage : sessionStorage).setItem(KEY, token);
+  } catch { /* storage blocked */ }
 };
 
 const needsHeader = (url: string) =>

@@ -70,8 +70,9 @@ export async function forwardToList<T>(action: string, body: Record<string, unkn
   }
 }
 
-export const signDevAccessToken = (address: string) =>
-  jwt.sign({ purpose: DEV_ACCESS_PURPOSE, address: address.toLowerCase() }, JWT_SECRET, { expiresIn: "7d" });
+/** "Keep me signed in for 7 days" gives a 7-day pass; otherwise it lasts a day. */
+export const signDevAccessToken = (address: string, remember = true) =>
+  jwt.sign({ purpose: DEV_ACCESS_PURPOSE, address: address.toLowerCase() }, JWT_SECRET, { expiresIn: remember ? "7d" : "1d" });
 
 // Records when each wallet last used the test app, at most once per SEEN_EVERY_MS
 const SEEN_EVERY_MS = 5 * 60 * 1000;

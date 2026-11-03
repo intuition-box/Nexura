@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useDisconnect, useSignMessage } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { BACKEND_URL } from "@/lib/constants";
@@ -47,6 +47,14 @@ export default function DevAccessGate({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Disconnecting the wallet (after it was connected on this page) ends the test-app pass
+  const { isConnected } = useAccount();
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (isConnected) { wasConnected.current = true; return; }
+    if (wasConnected.current) { wasConnected.current = false; setDevAccessToken(null); setRole(null); }
+  }, [isConnected]);
+
   useEffect(() => {
     if (!DEV_ACCESS_ON) return;
     check();
@@ -72,24 +80,41 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
+type SignInStep = "sign" | "allowed" | "denied";
+
+/**
+ * Connect a wallet, then sign to check it against the whitelist. A listed wallet sees "You're on the
+ * whitelist" and can keep the pass for 7 days before continuing; an unlisted one is told so.
+ */
 function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
+  const [step, setStep] = useState<SignInStep>("sign");
+  const [pass, setPass] = useState<{ token: string; access: DevAccessRole } | null>(null);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const signIn = async () => {
+  // A different wallet starts again at signing
+  useEffect(() => { setStep("sign"); setPass(null); setError(""); }, [address]);
+
+  const signToCheck = async () => {
     if (!address) return;
     setBusy(true);
     setError("");
     try {
       const { message } = await devAccessApi<{ message: string }>(`/challenge?address=${address}`);
       const signature = await signMessageAsync({ message });
-      const res = await devAccessApi<{ token: string; access: DevAccessRole }>("/verify", { method: "POST", body: JSON.stringify({ message, signature }) });
-      setDevAccessToken(res.token);
-      onIn(res.access);
+      try {
+        const res = await devAccessApi<{ token: string; access: DevAccessRole }>("/verify", { method: "POST", body: JSON.stringify({ message, signature }) });
+        setPass(res);
+        setStep("allowed");
+      } catch (err) {
+        if ((err as { status?: number })?.status === 403) { setStep("denied"); return; }
+        throw err;
+      }
     } catch (err) {
       setError(err instanceof Error && !/user rejected|denied/i.test(err.message) ? err.message : "Signature cancelled.");
     } finally {
@@ -97,7 +122,17 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
     }
   };
 
+  const continueToApp = () => {
+    if (!pass) return;
+    setDevAccessToken(pass.token, remember);
+    onIn(pass.access);
+  };
+
   const btn = "h-[48px] w-full rounded-full text-[14.5px] font-semibold transition disabled:opacity-60";
+  const wallet = <span className="self-center rounded-full bg-[#f4f1fc] px-[12px] py-[6px] font-mono text-[12.5px] text-[#3d485c]">{address && short(address)}</span>;
+  const otherWallet = (
+    <button onClick={() => { disconnect(); setError(""); }} disabled={busy} className={`${btn} border-[1.25px] border-[rgba(28,37,51,0.15)] bg-white text-[#1c2533] hover:bg-[#f7f4fe]`}>Use another wallet</button>
+  );
   return (
     <Screen>
       <p className="text-[22px] font-semibold tracking-[-0.5px]">Private test app</p>
@@ -105,11 +140,31 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
       <div className="flex w-full flex-col gap-[10px] pt-[24px]">
         {!isConnected ? (
           <button onClick={openConnectModal} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>Connect wallet</button>
+        ) : step === "allowed" ? (
+          <>
+            <div className="flex items-center gap-[10px] rounded-[20px] border-[1.25px] border-[rgba(0,225,162,0.4)] bg-[rgba(0,225,162,0.12)] px-[16px] py-[12px] text-left">
+              <span className="flex size-[20px] shrink-0 items-center justify-center rounded-full bg-[#00a87c] text-[12px] font-bold text-white">✓</span>
+              <p className="text-[13.5px] leading-[20px] text-[#1c2533]"><b className="font-semibold">You&apos;re on the whitelist.</b> <span className="font-mono">{address && short(address)}</span></p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-[8px] self-start py-[4px] text-[13.5px] text-[#3d485c]">
+              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="size-[16px] accent-[#8a3ffc]" />
+              Keep me signed in for 7 days
+            </label>
+            <button onClick={continueToApp} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>Continue to the app</button>
+          </>
+        ) : step === "denied" ? (
+          <>
+            <div className="rounded-[20px] border-[1.25px] border-[rgba(228,84,91,0.45)] bg-[rgba(228,84,91,0.08)] px-[16px] py-[12px] text-left">
+              <p className="text-[14px] font-semibold text-[#1c2533]">This wallet isn&apos;t on the whitelist</p>
+              <p className="pt-[2px] text-[13px] leading-[19.5px] text-[#3d485c]"><span className="font-mono">{address && short(address)}</span> can&apos;t open the test app. Ask the Nexura team for access, or connect another wallet.</p>
+            </div>
+            {otherWallet}
+          </>
         ) : (
           <>
-            <span className="rounded-full bg-[#f4f1fc] px-[12px] py-[6px] font-mono text-[12.5px] text-[#3d485c]">{address && short(address)}</span>
-            <button onClick={signIn} disabled={busy} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Waiting for signature…" : "Sign in"}</button>
-            <button onClick={() => { disconnect(); setError(""); }} disabled={busy} className={`${btn} border-[1.25px] border-[rgba(28,37,51,0.15)] bg-white text-[#1c2533] hover:bg-[#f7f4fe]`}>Use another wallet</button>
+            {wallet}
+            <button onClick={signToCheck} disabled={busy} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Check your wallet…" : "Sign to check access"}</button>
+            {otherWallet}
           </>
         )}
         {error && <p className="text-[13px] text-[#e4545b]">{error}</p>}
