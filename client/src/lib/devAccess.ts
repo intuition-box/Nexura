@@ -22,6 +22,10 @@ export const setDevAccessToken = (token: string | null, remember = true) => {
 const needsHeader = (url: string) =>
   (!!BACKEND_URL && url.startsWith(BACKEND_URL)) || url.startsWith("/api/") || url.startsWith(`${window.location.origin}/api/`);
 
+// Told about each successful write request the test app makes, for usage tracking (lib/testAppUsage.ts)
+let apiWriteListener: ((url: string) => void) | null = null;
+export const onApiWrite = (fn: ((url: string) => void) | null) => { apiWriteListener = fn; };
+
 let installed = false;
 export function installDevAccessFetch() {
   if (!DEV_ACCESS_ON || installed || typeof window === "undefined") return;
@@ -34,6 +38,8 @@ export function installDevAccessFetch() {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     headers.set(DEV_ACCESS_HEADER, token);
     const res = await original(input, { ...init, headers });
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (res.ok && method !== "GET" && method !== "HEAD") apiWriteListener?.(url);
     if (res.status === 403 && res.headers.get(DEV_ACCESS_HEADER) === "denied") {
       setDevAccessToken(null);
       window.dispatchEvent(new Event(DEV_ACCESS_DENIED_EVENT));

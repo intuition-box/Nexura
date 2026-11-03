@@ -5,10 +5,18 @@ const devAccessSchema = new mongoose.Schema({
   label: { type: String, default: "" },
   email: { type: String, default: "", lowercase: true, trim: true },
   addedBy: { type: String, default: "" },
-  // Only honoured while the email belongs to an admin of the Nexura dashboard.
-  canInvite: { type: Boolean, default: false },
   // Last time this wallet used the test app (recorded at most every few minutes)
   lastSeenAt: { type: Date, default: null },
+  // Running totals of test app use; the per-day detail lives in dev-access-usage
+  lastActiveAt: { type: Date, default: null },
+  // When the last active minute was counted, so two open tabs never count the same minute twice
+  lastMinuteAt: { type: Date, default: null },
+  usage: {
+    activeMinutes: { type: Number, default: 0 },
+    visits: { type: Number, default: 0 },
+    pageViews: { type: Number, default: 0 },
+    actions: { type: Number, default: 0 },
+  },
 }, { timestamps: true });
 
 export const devAccess = mongoose.model("dev-access", devAccessSchema);

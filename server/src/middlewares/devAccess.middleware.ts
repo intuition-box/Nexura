@@ -112,7 +112,8 @@ const isDashboardAdmin = async (req: Request) => {
   }
 };
 
-const OPEN_PATHS = [/^\/dev-access(\/|$)/, /^\/admin(\/|$)/, /callback/i, /connect-discord/i, /^\/server-time$/];
+// /user/sign-in is open so the test app can sign in to Nexura before it holds a pass
+const OPEN_PATHS = [/^\/dev-access(\/|$)/, /^\/user\/sign-in$/, /^\/admin(\/|$)/, /callback/i, /connect-discord/i, /^\/server-time$/];
 
 export async function devAccessGate(req: Request, res: Response, next: NextFunction) {
   if (!isGatedHost(req) || req.method === "OPTIONS" || OPEN_PATHS.some(p => p.test(req.path))) return next();

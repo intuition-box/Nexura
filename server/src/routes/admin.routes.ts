@@ -190,6 +190,7 @@ router
   .post("/dev-access/remove", adminDevAccess("remove"))
   .post("/dev-access/update", adminDevAccess("update"))
   .post("/dev-access/check-email", adminDevAccess("check"))
+  .post("/dev-access/usage", adminDevAccess("usage-detail"))
   .get("/get-admin-quests", attachAdminCampaignHub, getAdminHubQuests)
   .get("/get-quest-detail", attachAdminCampaignHub, getAdminQuestDetail)
   .get("/get-quests", attachAdminCampaignHub, getTasks)
