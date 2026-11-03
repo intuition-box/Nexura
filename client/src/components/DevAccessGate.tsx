@@ -3,8 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useDisconnect, useSignMessage } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { usePathname } from "next/navigation";
 import { BACKEND_URL } from "@/lib/constants";
 import { DEV_ACCESS_DENIED_EVENT, DEV_ACCESS_ON, getDevAccessToken, setDevAccessToken, type DevAccessRole } from "@/lib/devAccess";
+import { emitSessionChange } from "@/lib/session";
+import { saveWalletToken } from "@/components/studio/studioWalletProof";
+import { MIN_AGE, PRIVACY_URL, TERMS_URL, saveConsent, storedConsent } from "@/lib/legal";
+import { startTestAppUsage, trackTestAppPage } from "@/lib/testAppUsage";
 
 const DevAccessContext = createContext<DevAccessRole | null>(null);
 export const useDevAccess = () => useContext(DevAccessContext);
@@ -23,6 +28,28 @@ export const devAccessApi = async <T,>(path: string, init?: RequestInit): Promis
     throw err;
   }
   return body as T;
+};
+
+/**
+ * Sign in to Nexura exactly as the main app's Connect does (same message, same stored session), so one
+ * signature both logs the wallet in and proves it to the whitelist check.
+ */
+const signInToNexura = async (address: string, signMessage: (args: { message: string }) => Promise<string>) => {
+  const message = `Nexura Wallet Login\nAddress: ${address}\nNonce: ${Date.now()}`;
+  const signature = await signMessage({ message });
+  const res = await fetch(`${BACKEND_URL}/api/user/sign-in`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, referrer: localStorage.getItem("ref"), message, signature, consent: storedConsent() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) throw new Error(data?.error || `Sign-in failed (${res.status}). Try again.`);
+  localStorage.setItem("nexura:wallet", JSON.stringify({ address, signedAt: Date.now(), signedMessage: message, signature }));
+  localStorage.setItem("user_profile", JSON.stringify(data.user));
+  localStorage.setItem("nexura:token", data.accessToken);
+  if (data.walletToken) saveWalletToken(address, data.walletToken);
+  emitSessionChange();
+  return data.accessToken as string;
 };
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -66,7 +93,15 @@ export default function DevAccessGate({ children }: { children: ReactNode }) {
   if (!DEV_ACCESS_ON || open) return <>{children}</>;
   if (checking) return <Screen><p className="text-[14px] text-[#69728a]">Checking access…</p></Screen>;
   if (!role) return <SignInScreen onIn={setRole} />;
-  return <DevAccessContext.Provider value={role}>{children}</DevAccessContext.Provider>;
+  return <DevAccessContext.Provider value={role}><UsageTracker />{children}</DevAccessContext.Provider>;
+}
+
+/** Records time spent, visits, pages and actions while a tester is inside the test app. */
+function UsageTracker() {
+  const pathname = usePathname();
+  useEffect(() => startTestAppUsage(), []);
+  useEffect(() => { if (pathname) trackTestAppPage(pathname); }, [pathname]);
+  return null;
 }
 
 function Screen({ children }: { children: ReactNode }) {
@@ -96,6 +131,11 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Signing in to Nexura needs the terms agreed; the app's own terms prompt only loads past the gate
+  const [hasConsent] = useState(() => !!storedConsent());
+  const [adult, setAdult] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const canSign = hasConsent || (adult && agreed);
 
   // A different wallet starts again at signing
   useEffect(() => { setStep("sign"); setPass(null); setError(""); }, [address]);
@@ -105,10 +145,14 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
     setBusy(true);
     setError("");
     try {
-      const { message } = await devAccessApi<{ message: string }>(`/challenge?address=${address}`);
-      const signature = await signMessageAsync({ message });
+      if (!hasConsent) saveConsent();
+      const accessToken = await signInToNexura(address, signMessageAsync);
       try {
-        const res = await devAccessApi<{ token: string; access: DevAccessRole }>("/verify", { method: "POST", body: JSON.stringify({ message, signature }) });
+        const res = await devAccessApi<{ token: string; access: DevAccessRole }>("/verify-session", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ remember: true }),
+        });
         setPass(res);
         setStep("allowed");
       } catch (err) {
@@ -163,12 +207,25 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
         ) : (
           <>
             {wallet}
-            <button onClick={signToCheck} disabled={busy} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Check your wallet…" : "Sign to check access"}</button>
+            {!hasConsent && (
+              <div className="flex flex-col gap-[10px] rounded-[20px] border-[1.25px] border-[#e8e4f6] bg-[#fbfaff] p-[14px] text-left">
+                <label className="flex cursor-pointer items-start gap-[10px] text-[13px] leading-[19px] text-[#1c2533]">
+                  <input type="checkbox" checked={adult} onChange={e => setAdult(e.target.checked)} className="mt-[2px] size-[16px] accent-[#8a3ffc]" />
+                  I am {MIN_AGE} years of age or older
+                </label>
+                <label className="flex cursor-pointer items-start gap-[10px] text-[13px] leading-[19px] text-[#1c2533]">
+                  <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-[2px] size-[16px] accent-[#8a3ffc]" />
+                  <span>I have read and agree to the <a href={`https://nexura.intuition.box${TERMS_URL}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#2563eb] underline underline-offset-2">Terms of Use</a> and <a href={`https://nexura.intuition.box${PRIVACY_URL}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#2563eb] underline underline-offset-2">Privacy Policy</a></span>
+                </label>
+              </div>
+            )}
+            <button onClick={signToCheck} disabled={busy || !canSign} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Check your wallet…" : "Sign to check access"}</button>
             {otherWallet}
           </>
         )}
         {error && <p className="text-[13px] text-[#e4545b]">{error}</p>}
       </div>
+      <p className="pt-[18px] text-[12px] leading-[18px] text-[#98a0b4]">Usage on the test app is tracked to help us improve it.</p>
     </Screen>
   );
 }

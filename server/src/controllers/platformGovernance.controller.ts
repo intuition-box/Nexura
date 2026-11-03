@@ -43,7 +43,7 @@ const nameOf = (a: { username?: string | null; email?: string }) => a.username?.
 
 // ─── Context: team, signers and thresholds ───────────────────────────────────
 async function loadContext() {
-  const admins = await admin.find({ verified: true }).select("_id username email role createdAt lastActivity linkedWallet usernameChanges twoFactorEnabled").sort({ createdAt: 1 }).lean() as any[];
+  const admins = await admin.find({ verified: true }).select("_id username email role createdAt lastActivity linkedWallet usernameChanges twoFactorEnabled testAppInvite").sort({ createdAt: 1 }).lean() as any[];
   let gov = await platformGovernance.findOne({ key: "platform" });
   if (!gov) gov = await platformGovernance.create({ key: "platform" });
 
@@ -82,6 +82,15 @@ async function loadContext() {
   return { admins, gov, ownerId, roleOf, signers, signerIds, thresholds, adminById };
 }
 type Ctx = Awaited<ReturnType<typeof loadContext>>;
+
+const managesTestApp = (ctx: Ctx, a: { _id: unknown; testAppInvite?: boolean }) => ctx.roleOf(a) === "owner" || !!a.testAppInvite;
+
+/** Whether this dashboard admin can add people to the test app whitelist: the Owner, or anyone given the right. */
+export async function canManageTestApp(adminId: string): Promise<boolean> {
+  const ctx = await loadContext();
+  const a = ctx.adminById(adminId);
+  return !!a && managesTestApp(ctx, a);
+}
 
 function requireMe(req: GlobalRequest, ctx: Ctx) {
   const me = ctx.adminById(String(req.id));
@@ -157,7 +166,7 @@ async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any
       if (existing?.verified) throw new HttpError(BAD_REQUEST, "this email is already an admin");
       if (existing) throw new HttpError(BAD_REQUEST, "this email already has an invitation; resend it from the Team tab");
       if (pending.some(p => p.action?.kind === "invite" && p.action.email === email)) throw new HttpError(BAD_REQUEST, "an invitation for this email is already pending");
-      return { kind: "invite", email, role, clientUrl };
+      return { kind: "invite", email, role, testAppInvite: raw.testAppInvite === true, clientUrl };
     }
     case "member": {
       const t = target(raw.adminId);
@@ -210,6 +219,16 @@ async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any
       if (pendingSignerChangeFor(pending, oldId) || pendingSignerChangeFor(pending, newId)) throw new HttpError(BAD_REQUEST, "a signer change for one of these admins is already pending");
       return { kind: "replaceSigner", oldId, oldName: nameOf(oldT), newId, newName: nameOf(newT) };
     }
+    case "testAppInvite": {
+      const t = target(raw.adminId);
+      const allow = raw.allow === true;
+      if (ctx.roleOf(t) === "owner") throw new HttpError(BAD_REQUEST, "the Owner can always add people to the test app");
+      if (String(t._id) === me.id) throw new HttpError(BAD_REQUEST, "you cannot change your own test app access");
+      if (ctx.roleOf(t) === "superadmin" && me.role !== "owner") throw new HttpError(FORBIDDEN, "only the Owner can manage Super Admins");
+      if (!!t.testAppInvite === allow) throw new HttpError(BAD_REQUEST, allow ? "this admin can already add people to the test app" : "this admin already can't add people to the test app");
+      if (pending.some(p => p.action?.kind === "testAppInvite" && p.action.adminId === String(t._id))) throw new HttpError(BAD_REQUEST, "a test app access change for this admin is already pending");
+      return { kind: "testAppInvite", adminId: String(t._id), adminName: nameOf(t), allow };
+    }
     case "transferOwnership": {
       if (me.role !== "owner") throw new HttpError(FORBIDDEN, "only the Owner can transfer ownership");
       const t = target(raw.newOwnerId);
@@ -250,7 +269,7 @@ async function runAction(ctx: Ctx, action: any): Promise<{ link: string; code: s
       // Approved, so the invitation is created even if the email can't go out
       if (await admin.exists({ email: action.email })) throw new Error("this email already has an account or an invitation");
       const code = generateOTP();
-      await admin.create({ email: action.email, role: action.role, code, verified: false });
+      await admin.create({ email: action.email, role: action.role, testAppInvite: !!action.testAppInvite, code, verified: false });
       try {
         await sendEmailToAdmin(action.email, code, action.clientUrl);
         return;
@@ -297,6 +316,11 @@ async function runAction(ctx: Ctx, action: any): Promise<{ link: string; code: s
       const t = ctx.adminById(action.newId);
       if (!t || ctx.roleOf(t) !== "superadmin") throw new Error("the replacement must be a Super Admin");
       setSigners([...signerList().filter(id => id !== action.oldId), action.newId]);
+      break;
+    }
+    case "testAppInvite": {
+      if (!ctx.adminById(action.adminId)) throw new Error("that admin is no longer on the team");
+      await admin.findByIdAndUpdate(action.adminId, { testAppInvite: !!action.allow });
       break;
     }
     case "transferOwnership": {
@@ -427,15 +451,15 @@ export const getPlatformTeam = async (req: GlobalRequest, res: GlobalResponse) =
   try {
     const ctx = await loadContext();
     const me = requireMe(req, ctx);
-    const invites = await admin.find({ verified: false }).select("_id email role createdAt").sort({ createdAt: -1 }).lean() as any[];
+    const invites = await admin.find({ verified: false }).select("_id email role createdAt testAppInvite").sort({ createdAt: -1 }).lean() as any[];
     res.status(OK).json({
       meId: me.id,
       ownerId: ctx.ownerId,
       admins: ctx.admins.map(a => ({
         _id: String(a._id), name: nameOf(a), email: a.email, role: a.role,
-        createdAt: a.createdAt, lastActiveAt: a.lastActivity ?? null,
+        createdAt: a.createdAt, lastActiveAt: a.lastActivity ?? null, testAppInvite: managesTestApp(ctx, a),
       })),
-      pendingInvites: invites.map(i => ({ _id: String(i._id), email: i.email, role: i.role, createdAt: i.createdAt })),
+      pendingInvites: invites.map(i => ({ _id: String(i._id), email: i.email, role: i.role, createdAt: i.createdAt, testAppInvite: !!i.testAppInvite })),
     });
   } catch (error) {
     handleError(res, error, "error loading the team");
@@ -455,6 +479,7 @@ export const getPlatformMe = async (req: GlobalRequest, res: GlobalResponse) => 
       },
       role: me.role,
       signer: ctx.signerIds.has(me.id),
+      canManageTestApp: managesTestApp(ctx, a),
     });
   } catch (error) {
     handleError(res, error, "error loading your account");
