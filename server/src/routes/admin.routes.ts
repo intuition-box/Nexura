@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { addDevAccess, listDevAccess, removeDevAccess } from "@/controllers/devAccess.controller";
-import { requireListHere } from "@/middlewares/devAccess.middleware";
+import { adminDevAccess } from "@/controllers/devAccess.controller";
+import {
+  checkPlatformProposal, createPlatformProposal, executePlatformProposal, getPlatformGovernance, getPlatformMe, getPlatformTeam, platformUsernameAvailable, changePlatformUsername,
+  markPlatformNotificationsRead, useGovernanceInstead, voteOnPlatformProposal,
+} from "@/controllers/platformGovernance.controller";
+import {
+  changeAdminPassword, disableAdminTwoFactor, enableAdminTwoFactor, sendAdminPasswordCode, setupAdminTwoFactor,
+} from "@/controllers/platformAccount.controller";
 import {
   addAdmin,
   adminLogout,
@@ -90,13 +96,29 @@ router
   .post("/create-quest", createQuest)
   .post("/validate-task", markTask)
   .get("/location-analytics", getLocationAnalytics)
-  .post("/add-admin", addAdmin)
+  // Team changes are governance proposals (/admin/governance), never one admin's direct action
+  .post("/add-admin", useGovernanceInstead)
   .post("/restore-streak", restoreUserStreak)
   .post("/resend-invite", resendAdminInvite)
-  .delete("/delete-invite", deleteAdminInvite)
+  .delete("/delete-invite", useGovernanceInstead)
   .post("/logout", adminLogout)
-  .post("/remove-admin", removeAdmin)
-  .post("/manage-admin", manageAdmin)
+  .post("/remove-admin", useGovernanceInstead)
+  .post("/manage-admin", useGovernanceInstead)
+  .get("/governance/team", getPlatformTeam)
+  .get("/governance/me", getPlatformMe)
+  .get("/governance/username-available", platformUsernameAvailable)
+  .patch("/governance/username", changePlatformUsername)
+  .post("/account/2fa/setup", setupAdminTwoFactor)
+  .post("/account/2fa/enable", enableAdminTwoFactor)
+  .post("/account/2fa/disable", disableAdminTwoFactor)
+  .post("/account/password-code", sendAdminPasswordCode)
+  .post("/account/password", changeAdminPassword)
+  .get("/governance", getPlatformGovernance)
+  .post("/governance/proposals", createPlatformProposal)
+  .post("/governance/proposals/check", checkPlatformProposal)
+  .post("/governance/proposals/:ref/vote", voteOnPlatformProposal)
+  .post("/governance/proposals/:ref/execute", executePlatformProposal)
+  .post("/governance/notifications/read", markPlatformNotificationsRead)
   .post("/reward-xp", requireAdminSuperadmin, rewardXp)
   .post("/reward-xp-batch", requireAdminSuperadmin, rewardXpBatch)
   .post("/search-xp-history", searchUserXpHistory)
@@ -161,9 +183,11 @@ router
   .get("/get-banned-users", getBannedUsers)
   .get("/get-xp-history", getXpHistory)
   .get("/get-admins", getAdmins)
-  .get("/dev-access", requireListHere, listDevAccess)
-  .post("/dev-access/add", requireListHere, addDevAccess)
-  .post("/dev-access/remove", requireListHere, removeDevAccess)
+  .get("/dev-access", adminDevAccess("list"))
+  .post("/dev-access/add", adminDevAccess("add"))
+  .post("/dev-access/remove", adminDevAccess("remove"))
+  .post("/dev-access/update", adminDevAccess("update"))
+  .post("/dev-access/check-email", adminDevAccess("check"))
   .get("/get-admin-quests", attachAdminCampaignHub, getAdminHubQuests)
   .get("/get-quest-detail", attachAdminCampaignHub, getAdminQuestDetail)
   .get("/get-quests", attachAdminCampaignHub, getTasks)

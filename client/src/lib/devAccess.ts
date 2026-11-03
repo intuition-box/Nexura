@@ -1,6 +1,6 @@
 import { BACKEND_URL } from "./constants";
 
-export const DEV_ACCESS_ON = process.env.NEXT_PUBLIC_DEV_ACCESS === "true";
+export const DEV_ACCESS_ON = process.env.NEXT_PUBLIC_DEV_ACCESS === "true" || !!BACKEND_URL?.includes("staging-api.nexura.intuition.box");
 export const DEV_ACCESS_HEADER = "x-dev-access";
 export const DEV_ACCESS_DENIED_EVENT = "nexura:dev-access-denied";
 const KEY = "nexura_dev_access";
