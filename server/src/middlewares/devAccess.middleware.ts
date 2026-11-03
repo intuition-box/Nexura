@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { createHmac } from "crypto";
 import axios from "axios";
 import logger from "@/config/logger";
 import { JWT_SECRET } from "@/utils/env.utils";
@@ -18,7 +19,9 @@ export const isGatedHost = (req: Request) =>
 export const holdsList = (req: Request) => !isGatedHost(req);
 export const DEV_ACCESS_HEADER = "x-dev-access";
 export const DEV_ACCESS_SYNC_HEADER = "x-dev-access-key";
-export const DEV_ACCESS_SYNC_KEY = String(process.env.DEV_ACCESS_SYNC_KEY ?? "");
+// Set DEV_ACCESS_SYNC_KEY to the same value on api and staging-api. Without it, each server derives the
+// key from its JWT_SECRET, which matches as long as both servers share that secret.
+export const DEV_ACCESS_SYNC_KEY = String(process.env.DEV_ACCESS_SYNC_KEY || createHmac("sha256", JWT_SECRET).update("nexura-dev-access-sync").digest("hex"));
 const DEV_ACCESS_PURPOSE = "dev-access";
 const LIST_URL = String(process.env.DEV_ACCESS_LIST_URL ?? MAIN_API_URL).replace(/\/+$/, "");
 
