@@ -27,7 +27,7 @@ import { MAX_USERNAME_CHANGES } from "@/controllers/hub.controller";
  */
 
 // The first Owner of the admin dashboard (PLATFORM_OWNER_EMAIL overrides it). Applied once; ownership can be transferred after.
-const DEFAULT_OWNER_EMAIL = "oyelola@admin.com";
+const DEFAULT_OWNER_EMAIL = "onlyrchris@gmail.com";
 
 const KIND_TO_VERB = { propose: "Propose", approve: "Approve", reject: "Reject", execute: "Execute" } as const;
 type SignatureKind = keyof typeof KIND_TO_VERB;
