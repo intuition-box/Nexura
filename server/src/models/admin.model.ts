@@ -52,6 +52,8 @@ const adminSchema = new mongoose.Schema({
   },
   // Google Authenticator 2-step verification, as for Studio admins (secrets are encrypted, see utils/secretBox.ts)
   twoFactorEnabled: { type: Boolean, default: false },
+  // Can add people to the test app whitelist (the Test App Access tab). Chosen when they're invited; the Owner always can.
+  testAppInvite: { type: Boolean, default: false },
   twoFactorSecret: { type: String, default: null },
   twoFactorPendingSecret: { type: String, default: null },
   twoFactorLastStep: { type: Number, default: 0 }
