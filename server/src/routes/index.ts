@@ -8,27 +8,35 @@ import questRoutes from "./quest.routes.ts";
 import userRoutes from "./user.routes.ts";
 import appRoutes from "./app.routes.ts";
 import lessonRoutes from "./lesson.routes.ts";
+import devAccessRoutes from "./devAccess.routes.ts";
+import { devAccessGate } from "@/middlewares/devAccess.middleware";
 import {
 	fetchEcosystemDapps,
 	fetchMiniQuests,
 	fetchQuests,
 } from "@/controllers/quest.controller.ts";
 import { signIn } from "@/controllers/auth.controller";
-import { createAdmin, adminLogin, forgotAdminPassword, resetAdminPassword } from "@/controllers/admin.controller";
+import { verifyAdminTwoFactorLogin } from "@/controllers/platformAccount.controller";
+import { createAdmin, adminLogin, checkAdminSignInWallet, forgotAdminPassword, resetAdminPassword } from "@/controllers/admin.controller";
 import { authenticateUser2, authenticateAdmin, authenticateUser } from "@/middlewares/auth.middleware";
 import userHubRoutes from "./userHub.routes.ts";
 import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/authGuard";
 // import testSeedRoutes from "./test-seed.routes.ts";
-import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback } from "@/controllers/hub.auth.controller.ts";
+import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback, proveWallet } from "@/controllers/hub.auth.controller.ts";
 
 const router = Router();
 
 router
+	.use(devAccessGate)
+	.use("/dev-access", devAccessRoutes)
 	.get("/server-time", (_req, res) => {
 		res.json({ serverTime: Date.now() });
 	})
   // Sign-in and code checks are rate limited and lock out after repeated wrong attempts (see authGuard)
   .post("/admin/register", authIpLimiter, attemptGuard("platform-register"), createAdmin)
+  .post("/admin/wallet-proof", authIpLimiter, proveWallet)
+  .post("/admin/sign-in/check", authIpLimiter, attemptGuard("platform-login-check"), checkAdminSignInWallet)
+  .post("/admin/2fa/verify-login", authIpLimiter, verifyAdminTwoFactorLogin)
   .post("/admin/login", authIpLimiter, attemptGuard("platform-login"), adminLogin)
   .post("/admin/forgot-password", codeSendLimiter, forgotAdminPassword)
   .post("/admin/reset-password", authIpLimiter, resetAdminPassword)

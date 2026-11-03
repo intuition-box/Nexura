@@ -15,6 +15,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toaster";
 import LegalConsentHost from "@/components/LegalConsentHost";
+import DevAccessGate from "@/components/DevAccessGate";
+import "@/lib/devAccess";
 
 import "@rainbow-me/rainbowkit/styles.css";
 
@@ -81,14 +83,16 @@ export function Providers({ children }: { children: ReactNode }) {
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={darkTheme()}>
-          <AuthProvider>
-            <TooltipProvider>
-              <SidebarProvider defaultOpen={false} style={sidebarStyle}>
-                {children}
-              </SidebarProvider>
-            </TooltipProvider>
-            <LegalConsentHost />
-          </AuthProvider>
+          <DevAccessGate>
+            <AuthProvider>
+              <TooltipProvider>
+                <SidebarProvider defaultOpen={false} style={sidebarStyle}>
+                  {children}
+                </SidebarProvider>
+              </TooltipProvider>
+              <LegalConsentHost />
+            </AuthProvider>
+          </DevAccessGate>
           <Toaster />
         </RainbowKitProvider>
       </QueryClientProvider>

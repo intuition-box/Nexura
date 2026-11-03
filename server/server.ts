@@ -23,7 +23,7 @@ configureAxiosResilience();
 
 const server = express();
 
-server.use(cors({ origin: SERVER_ENV.ALLOWED_ORIGINS }));
+server.use(cors({ origin: SERVER_ENV.ALLOWED_ORIGINS, exposedHeaders: ["x-dev-access"] }));
 server.use(helmet());
 server.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 server.use(express.json());

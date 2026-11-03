@@ -7,7 +7,7 @@ import { lesson, lessonCompleted, miniLesson, question, questionCompleted, video
 import { admin } from "@/models/admin.model";
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, NOT_FOUND, NO_CONTENT, OK, UNAUTHORIZED, FORBIDDEN } from "@/utils/status.utils";
 import { campaign as campaignModel, campaignCompleted, campaign } from "@/models/campaign.model";
-import { EMAIL_RE, generateOTP, getRefreshToken, hashPassword, JWT, passwordChangeMark, startOfDayUTC, updateLevel, validateQuestData } from "@/utils/utils";
+import { EMAIL_RE, generateOTP, getRefreshToken, hashPassword, hubSessionTtl, JWT, passwordChangeMark, startOfDayUTC, updateLevel, validateQuestData } from "@/utils/utils";
 import { sendAdminResetEmail, sendEmailToAdmin } from "@/utils/sendMail";
 import { campaignQuestCompleted, ecosystemQuestCompleted, miniQuestCompleted, questCompleted } from "@/models/questsCompleted.models";
 import { submission } from "@/models/submission.model";
@@ -21,6 +21,8 @@ import { uploadImg } from "@/utils/img.utils";
 import { xpLog } from "@/models/xpLog.model";
 import { ADMIN_CAMPAIGN_SYSTEM_KEY } from "@/utils/adminCampaignHub";
 import { withSubmissionCategory } from "@/controllers/quest.controller";
+import { walletFromToken } from "@/utils/walletToken";
+import { ADMIN_TWO_FACTOR_PURPOSE } from "@/controllers/platformAccount.controller";
 
 const MAX_ADMIN_LEADERBOARD_LIMIT = 500;
 const DEFAULT_ADMIN_LEADERBOARD_LIMIT = 500;
@@ -48,6 +50,7 @@ const formatAdminRecord = (record: {
 	createdAt?: Date;
 	lastActivity?: Date | null;
 	isOnline?: boolean;
+	linkedWallet?: string | null;
 }) => ({
 	_id: record._id,
 	name: record.username?.trim() || record.email.split("@")[0],
@@ -57,6 +60,7 @@ const formatAdminRecord = (record: {
 	createdAt: record.createdAt,
 	lastActivity: record.lastActivity ?? null,
 	isOnline: Boolean(record.isOnline),
+	linkedWallet: record.linkedWallet ?? null,
 });
 
 const deriveBanTimestamp = (record: { _id: unknown; createdAt?: Date | string }) => {
@@ -177,9 +181,11 @@ const buildAdminAuthPayload = (record: {
   createdAt?: Date;
   lastActivity?: Date | null;
   isOnline?: boolean;
-}) => {
+  linkedWallet?: string | null;
+}, ttl?: ReturnType<typeof hubSessionTtl>) => {
   const id = String(record._id);
-  const accessToken = JWT.sign(id);
+  // "Keep me signed in" decides how long the session lasts, as in the Studio
+  const accessToken = JWT.sign(id, ttl);
   const refreshToken = getRefreshToken(id);
 
   return {
@@ -702,6 +708,28 @@ export const deleteAdminInvite = async (req: GlobalRequest, res: GlobalResponse)
   }
 };
 
+/**
+ * POST /admin/sign-in/check { email, password, walletAddress }: whether the connected wallet can open
+ * the account. Answers only for a correct password, like the Studio's /hub/sign-in/check.
+ */
+export const checkAdminSignInWallet = async (req: GlobalRequest, res: GlobalResponse) => {
+	try {
+		const { email, password, walletAddress } = req.body ?? {};
+		const found = await admin.findOne({ email: String(email ?? "").trim() });
+		if (!found?.password || !(await bcrypt.compare(String(password ?? ""), found.password))) {
+			res.status(BAD_REQUEST).json({ status: "unknown" });
+			return;
+		}
+		if (!walletAddress) { res.status(OK).json({ status: "walletRequired" }); return; }
+		const linked = found.linkedWallet;
+		if (!linked || linked.toLowerCase() === String(walletAddress).toLowerCase()) { res.status(OK).json({ status: "ok" }); return; }
+		res.status(OK).json({ status: "wrongWallet", error: "Switch to the wallet linked to this account to sign in." });
+	} catch (error) {
+		logger.error(error);
+		res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't check the wallet" });
+	}
+};
+
 export const adminLogin = async (req: GlobalRequest, res: GlobalResponse) => {
 	try {
 		const { email, password }: { email: string; password: string } = req.body;
@@ -717,8 +745,35 @@ export const adminLogin = async (req: GlobalRequest, res: GlobalResponse) => {
 			res.status(BAD_REQUEST).json({ error: "invalid credentials" });
 			return;
     }
-		
-    const { id, accessToken, refreshToken, admin: authAdmin } = buildAdminAuthPayload(adminExists.toObject());
+
+		// Wallet-locked sign-in, as in the Studio: the wallet proven by its token (one signature when it
+		// connected) must be the one linked to the account. The first wallet used is linked.
+		const walletAddress = await walletFromToken(req.body?.walletToken);
+		const linked = adminExists.linkedWallet ?? null;
+		if (!walletAddress) {
+			res.status(FORBIDDEN).json({ error: linked ? "Connect the wallet linked to this account to sign in." : "Connect your wallet to sign in.", walletRequired: true });
+			return;
+		}
+		if (linked && walletAddress.toLowerCase() !== linked.toLowerCase()) {
+			res.status(FORBIDDEN).json({ error: "Switch to the wallet linked to this account to sign in.", wrongWallet: true });
+			return;
+		}
+		if (!linked) {
+			if (await admin.exists({ _id: { $ne: adminExists._id }, linkedWallet: walletAddress.toLowerCase() })) {
+				res.status(FORBIDDEN).json({ error: "This wallet is already linked to another admin. Connect your own wallet.", wrongWallet: true });
+				return;
+			}
+			adminExists.linkedWallet = walletAddress.toLowerCase();
+			await adminExists.save();
+		}
+
+		// 2-step verification, as in the Studio: the session is only issued after a Google Authenticator code
+		if (adminExists.twoFactorEnabled) {
+			res.status(OK).json({ twoFactorRequired: true, twoFactorToken: JWT.signFor(adminExists._id.toString(), ADMIN_TWO_FACTOR_PURPOSE, "10m") });
+			return;
+		}
+
+    const { id, accessToken, refreshToken, admin: authAdmin } = buildAdminAuthPayload(adminExists.toObject(), hubSessionTtl(req.body?.remember));
 
 		req.id = id;
 
@@ -768,12 +823,24 @@ export const createAdmin = async (req: GlobalRequest, res: GlobalResponse) => {
 			return;
 		}
 
+		// As in Studio sign-up, the wallet proven here is the only one that can sign in to this account
+		const walletAddress = await walletFromToken(req.body?.walletToken);
+		if (!walletAddress) {
+			res.status(UNAUTHORIZED).json({ error: "Connect and verify your wallet to finish setting up your account.", walletRequired: true });
+			return;
+		}
+		if (await admin.exists({ _id: { $ne: semiAdmin._id }, linkedWallet: walletAddress.toLowerCase() })) {
+			res.status(BAD_REQUEST).json({ error: "This wallet is already linked to another admin. Connect your own wallet.", wrongWallet: true });
+			return;
+		}
+
 		const hashedPassword = await hashPassword(password);
 
 		semiAdmin.verified = true;
 		semiAdmin.password = hashedPassword;
 		semiAdmin.username = resolvedUsername;
 		semiAdmin.code = "";
+		semiAdmin.linkedWallet = walletAddress.toLowerCase();
 
     await semiAdmin.save();
 
