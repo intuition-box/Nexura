@@ -3,8 +3,7 @@ import { verifyMessage, isAddress } from "ethers";
 import logger from "@/config/logger";
 import { JWT_SECRET } from "@/utils/env.utils";
 import { devAccess } from "@/models/devAccess.model";
-import { hub, hubAdmin } from "@/models/hub.model";
-import { ADMIN_CAMPAIGN_SYSTEM_KEY } from "@/utils/adminCampaignHub";
+import { admin } from "@/models/admin.model";
 import { BAD_REQUEST, CONFLICT, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_FOUND, OK, UNAUTHORIZED } from "@/utils/status.utils";
 import {
   DEV_ACCESS_SYNC_HEADER, DEV_ACCESS_SYNC_KEY, ListError, clearDevAccessCache, forwardToList, holdsList,
@@ -60,11 +59,22 @@ export const devAccessVerify = async (req: GlobalRequest, res: GlobalResponse) =
       res.status(FORBIDDEN).json({ error: "this wallet isn't on the test app whitelist" });
       return;
     }
-    res.status(OK).json({ token: signDevAccessToken(address), access: { address } });
+    res.status(OK).json({ token: signDevAccessToken(address, req.body?.remember !== false), access: { address } });
   } catch (error) {
     logger.error(error);
     res.status(INTERNAL_SERVER_ERROR).json({ error: "sign-in failed" });
   }
+};
+
+/** GET /dev-access/check?address=: whether a wallet is on the whitelist, before it signs (asks the main API). */
+export const devAccessCheck = async (req: GlobalRequest, res: GlobalResponse) => {
+  const address = String(req.query.address ?? "").trim().toLowerCase();
+  if (!isAddress(address)) {
+    res.status(BAD_REQUEST).json({ error: "send a valid wallet address" });
+    return;
+  }
+  clearDevAccessCache(address);
+  res.status(OK).json({ allowed: await isWhitelisted(address) });
 };
 
 export const devAccessAllowed = async (req: GlobalRequest, res: GlobalResponse) => {
@@ -79,19 +89,20 @@ export const devAccessAllowed = async (req: GlobalRequest, res: GlobalResponse) 
 // Whitelist actions for dashboard admins. They only run on the server that holds
 // the list; the gated server forwards them there with the admin's name attached.
 
-type Action = "list" | "check" | "add" | "remove" | "update";
-const ACTIONS: Action[] = ["list", "check", "add", "remove", "update"];
+// "seen" is only sent by the gated server (sync key), when a whitelisted wallet uses the test app
+type Action = "list" | "check" | "add" | "remove" | "update" | "seen";
+const ACTIONS: Action[] = ["list", "check", "add", "remove", "update", "seen"];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
 const cleanName = (v: unknown) => String(v ?? "").trim().slice(0, 60);
 
-// Members of the official Nexura hub in Studio, by email.
-async function nexuraHubMembers(): Promise<Map<string, string>> {
-  const nexura = await hub.findOne({ systemKey: ADMIN_CAMPAIGN_SYSTEM_KEY }, { _id: 1 }).lean() as { _id: unknown } | null;
-  if (!nexura) return new Map();
-  const rows = await hubAdmin.find({ hub: nexura._id }, { email: 1, name: 1 }).lean() as { email?: string; name?: string }[];
-  return new Map(rows.filter(r => r.email).map(r => [String(r.email).toLowerCase(), String(r.name ?? "")]));
+// Admins of the Nexura dashboard, by email: the only people who can be allowed to invite others.
+async function dashboardAdmins(): Promise<Map<string, string>> {
+  const members = new Map<string, string>();
+  const rows = await admin.find({ verified: true }, { email: 1, username: 1 }).lean() as { email?: string; username?: string }[];
+  for (const a of rows) if (a.email) members.set(String(a.email).toLowerCase(), String(a.username ?? "") || String(a.email).split("@")[0]!);
+  return members;
 }
 
 const toEntry = (r: any, members: Map<string, string>) => ({
@@ -99,21 +110,22 @@ const toEntry = (r: any, members: Map<string, string>) => ({
   label: r.label ?? "",
   email: r.email ?? "",
   addedBy: r.addedBy ?? "",
-  hubMember: !!r.email && members.has(r.email),
+  dashboardAdmin: !!r.email && members.has(r.email),
   canInvite: !!r.canInvite && !!r.email && members.has(r.email),
   addedAt: r.createdAt,
+  lastSeenAt: r.lastSeenAt ?? null,
 });
 
 async function runAction(action: Action, body: any, adminName: string) {
   if (action === "list") {
-    const [rows, members] = await Promise.all([devAccess.find().sort({ createdAt: -1 }).lean(), nexuraHubMembers()]);
+    const [rows, members] = await Promise.all([devAccess.find().sort({ createdAt: -1 }).lean(), dashboardAdmins()]);
     return { entries: (rows as any[]).map(r => toEntry(r, members)) };
   }
 
   if (action === "check") {
     const email = cleanEmail(body?.email);
-    const members = await nexuraHubMembers();
-    return { hubMember: members.has(email), memberName: members.get(email) ?? "" };
+    const members = await dashboardAdmins();
+    return { dashboardAdmin: members.has(email), memberName: members.get(email) ?? "" };
   }
 
   const address = String(body?.address ?? "").trim().toLowerCase();
@@ -126,12 +138,17 @@ async function runAction(action: Action, body: any, adminName: string) {
     if (!EMAIL_RE.test(email)) throw new ListError("enter a valid email", BAD_REQUEST);
     if (await devAccess.exists({ address })) throw new ListError("this wallet already has access", CONFLICT);
     const canInvite = !!body?.canInvite;
-    if (canInvite && !(await nexuraHubMembers()).has(email)) {
-      throw new ListError("only Nexura hub members can be allowed to invite others", BAD_REQUEST);
+    if (canInvite && !(await dashboardAdmins()).has(email)) {
+      throw new ListError("only Nexura dashboard admins can be allowed to invite others", BAD_REQUEST);
     }
     await devAccess.create({ address, label, email, canInvite, addedBy: adminName });
     clearDevAccessCache(address);
     return { added: 1 };
+  }
+
+  if (action === "seen") {
+    await devAccess.updateOne({ address }, { $set: { lastSeenAt: new Date() } });
+    return { seen: 1 };
   }
 
   if (action === "remove") {
@@ -154,9 +171,9 @@ async function runAction(action: Action, body: any, adminName: string) {
       if (!EMAIL_RE.test(String(set.email))) throw new ListError("enter a valid email", BAD_REQUEST);
     }
     const email = String(set.email ?? row.email ?? "");
-    const isMember = (await nexuraHubMembers()).has(email);
+    const isMember = (await dashboardAdmins()).has(email);
     if (typeof body?.canInvite === "boolean") {
-      if (body.canInvite && !isMember) throw new ListError("only Nexura hub members can be allowed to invite others", BAD_REQUEST);
+      if (body.canInvite && !isMember) throw new ListError("only Nexura dashboard admins can be allowed to invite others", BAD_REQUEST);
       set.canInvite = body.canInvite;
     }
     if (!isMember) set.canInvite = false;

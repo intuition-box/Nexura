@@ -11,6 +11,7 @@ import { REDIS } from "@/utils/redis.utils";
 import { isTokenRevoked } from "@/models/revokedToken.model";
 import { stripOperators } from "./stripOperators";
 import multer from "multer";
+import { ensureNexuraDiscord } from "@/controllers/platformAccount.controller";
 import { updateAdminLastActivity } from "@/utils/adminActivityCron";
 
 type decodedDataType = {
@@ -340,6 +341,7 @@ export const requireAdminSuperadmin = async (req: GlobalRequest, res: GlobalResp
 export const attachAdminCampaignHub = async (req: GlobalRequest, res: GlobalResponse, next: GlobalNextFunction) => {
   try {
     const nexuraHub = await resolveAdminCampaignHub(req.id);
+    void ensureNexuraDiscord(nexuraHub as any);
     const currentAdmin = typeof req.admin === "object" && req.admin ? req.admin : {};
     const adminName =
       typeof currentAdmin.name === "string" && currentAdmin.name.trim()
