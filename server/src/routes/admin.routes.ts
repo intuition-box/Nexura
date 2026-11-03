@@ -5,7 +5,7 @@ import {
   markPlatformNotificationsRead, useGovernanceInstead, voteOnPlatformProposal,
 } from "@/controllers/platformGovernance.controller";
 import {
-  changeAdminPassword, disableAdminTwoFactor, enableAdminTwoFactor, sendAdminPasswordCode, setupAdminTwoFactor,
+  changeAdminPassword, disableAdminTwoFactor, enableAdminTwoFactor, linkNexuraDiscord, listNexuraDiscordServers, sendAdminPasswordCode, setupAdminTwoFactor,
 } from "@/controllers/platformAccount.controller";
 import {
   addAdmin,
@@ -113,6 +113,8 @@ router
   .post("/account/2fa/disable", disableAdminTwoFactor)
   .post("/account/password-code", sendAdminPasswordCode)
   .post("/account/password", changeAdminPassword)
+  .get("/account/discord-servers", listNexuraDiscordServers)
+  .post("/account/discord-link", requireAdminSuperadmin, linkNexuraDiscord)
   .get("/governance", getPlatformGovernance)
   .post("/governance/proposals", createPlatformProposal)
   .post("/governance/proposals/check", checkPlatformProposal)

@@ -59,11 +59,22 @@ export const devAccessVerify = async (req: GlobalRequest, res: GlobalResponse) =
       res.status(FORBIDDEN).json({ error: "this wallet isn't on the test app whitelist" });
       return;
     }
-    res.status(OK).json({ token: signDevAccessToken(address), access: { address } });
+    res.status(OK).json({ token: signDevAccessToken(address, req.body?.remember !== false), access: { address } });
   } catch (error) {
     logger.error(error);
     res.status(INTERNAL_SERVER_ERROR).json({ error: "sign-in failed" });
   }
+};
+
+/** GET /dev-access/check?address=: whether a wallet is on the whitelist, before it signs (asks the main API). */
+export const devAccessCheck = async (req: GlobalRequest, res: GlobalResponse) => {
+  const address = String(req.query.address ?? "").trim().toLowerCase();
+  if (!isAddress(address)) {
+    res.status(BAD_REQUEST).json({ error: "send a valid wallet address" });
+    return;
+  }
+  clearDevAccessCache(address);
+  res.status(OK).json({ allowed: await isWhitelisted(address) });
 };
 
 export const devAccessAllowed = async (req: GlobalRequest, res: GlobalResponse) => {

@@ -1,4 +1,8 @@
 import QRCode from "qrcode";
+import axios from "axios";
+import { hub } from "@/models/hub.model";
+import { BOT_TOKEN } from "@/utils/env.utils";
+import { resolveAdminCampaignHub } from "@/utils/adminCampaignHub";
 import logger from "@/config/logger";
 import { admin } from "@/models/admin.model";
 import { OTP } from "@/models/otp.model";
@@ -146,3 +150,63 @@ export const changeAdminPassword = async (req: GlobalRequest, res: GlobalRespons
     res.status(INTERNAL_SERVER_ERROR).json({ error: "Error resetting password" });
   }
 };
+
+// ─── Nexura's own Discord ─────────────────────────────────────────────────────
+// Nexura owns its Discord and the bot is already in it, so the dashboard links it straight from the
+// servers the bot belongs to, without the OAuth flow projects use.
+
+type BotGuild = { id: string; name: string; icon: string | null };
+
+async function botGuilds(): Promise<BotGuild[]> {
+  if (!BOT_TOKEN) throw new Error("BOT_TOKEN isn't set on this server");
+  const { data } = await axios.get("https://discord.com/api/v10/users/@me/guilds", { headers: { Authorization: `Bot ${BOT_TOKEN}` }, timeout: 10_000 });
+  return (data as BotGuild[]).map(g => ({ id: String(g.id), name: String(g.name), icon: g.icon ?? null }));
+}
+
+/** GET /admin/account/discord-servers: the Discord servers the Nexura bot is in. */
+export const listNexuraDiscordServers = async (_req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    res.status(OK).json({ servers: await botGuilds() });
+  } catch (error: any) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: error?.message?.includes("BOT_TOKEN") ? error.message : "couldn't load the bot's Discord servers" });
+  }
+};
+
+/** POST /admin/account/discord-link { guildId }: links one of the bot's servers to the Nexura hub. */
+export const linkNexuraDiscord = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    const guildId = String(req.body?.guildId ?? "").trim();
+    const guild = (await botGuilds()).find(g => g.id === guildId);
+    if (!guild) { res.status(BAD_REQUEST).json({ error: "the Nexura bot isn't in that Discord server" }); return; }
+    const nexura = await resolveAdminCampaignHub(req.id);
+    await hub.findByIdAndUpdate(nexura._id, { guildId: guild.id, discordServer: guild.name, discordConnected: true });
+    res.status(OK).json({ message: "Discord connected", discordServer: guild.name });
+  } catch (error) {
+    logger.error(error);
+    res.status(INTERNAL_SERVER_ERROR).json({ error: "couldn't connect Discord" });
+  }
+};
+
+// Nexura's Discord server. If the Nexura hub ever loses its link (e.g. a Disconnect), it is restored here.
+export const NEXURA_DISCORD_GUILD_ID = process.env.NEXURA_DISCORD_GUILD_ID || "1419336727302111367";
+let discordChecked = false;
+
+/** Relinks Nexura's Discord once per server start when the Nexura hub has none (no OAuth: the bot is already in it). */
+export async function ensureNexuraDiscord(nexuraHub: { _id: unknown; guildId?: string | null; discordConnected?: boolean }) {
+  if (discordChecked) return;
+  discordChecked = true;
+  if (nexuraHub.guildId && nexuraHub.discordConnected) return;
+  try {
+    let name = "";
+    if (BOT_TOKEN) {
+      const { data } = await axios.get(`https://discord.com/api/v10/guilds/${NEXURA_DISCORD_GUILD_ID}`, { headers: { Authorization: `Bot ${BOT_TOKEN}` }, timeout: 10_000 });
+      name = String(data?.name ?? "");
+    }
+    await hub.findByIdAndUpdate(nexuraHub._id, { guildId: NEXURA_DISCORD_GUILD_ID, discordServer: name || "Nexura", discordConnected: true });
+    logger.info(`Relinked Nexura's Discord server ${NEXURA_DISCORD_GUILD_ID}`);
+  } catch (error) {
+    discordChecked = false; // try again on a later request
+    logger.error(error);
+  }
+}
