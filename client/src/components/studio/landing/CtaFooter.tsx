@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 
 export function CtaSection() {
   return (
@@ -32,7 +31,7 @@ export function LandingFooter() {
     <footer className="flex flex-wrap items-center justify-between gap-3 pb-[50px] pt-[34px] text-[13px] leading-[20.15px] text-[#5b6478]">
       <span>© 2026 Nexura.</span>
       <span>
-        <a href={TERMS_URL} className="hover:text-[#8a3ffc]">Terms</a> · <a href={PRIVACY_URL} className="hover:text-[#8a3ffc]">Privacy</a> · <a href="/docs" className="hover:text-[#8a3ffc]">Docs</a>
+        <a href="/docs" className="hover:text-[#8a3ffc]">Docs</a>
       </span>
     </footer>
   );

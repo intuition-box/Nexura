@@ -8,7 +8,6 @@ import { BACKEND_URL } from "@/lib/constants";
 import { DEV_ACCESS_DENIED_EVENT, DEV_ACCESS_ON, getDevAccessToken, setDevAccessToken, type DevAccessRole } from "@/lib/devAccess";
 import { emitSessionChange } from "@/lib/session";
 import { saveWalletToken } from "@/components/studio/studioWalletProof";
-import { MIN_AGE, PRIVACY_URL, TERMS_URL, saveConsent, storedConsent } from "@/lib/legal";
 import { startTestAppUsage, trackTestAppPage } from "@/lib/testAppUsage";
 
 const DevAccessContext = createContext<DevAccessRole | null>(null);
@@ -40,7 +39,7 @@ const signInToNexura = async (address: string, signMessage: (args: { message: st
   const res = await fetch(`${BACKEND_URL}/api/user/sign-in`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address, referrer: localStorage.getItem("ref"), message, signature, consent: storedConsent() }),
+    body: JSON.stringify({ address, referrer: localStorage.getItem("ref"), message, signature }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.user) throw new Error(data?.error || `Sign-in failed (${res.status}). Try again.`);
@@ -131,11 +130,6 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Signing in to Nexura needs the terms agreed; the app's own terms prompt only loads past the gate
-  const [hasConsent] = useState(() => !!storedConsent());
-  const [adult, setAdult] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-  const canSign = hasConsent || (adult && agreed);
 
   // A different wallet starts again at signing
   useEffect(() => { setStep("sign"); setPass(null); setError(""); }, [address]);
@@ -145,7 +139,6 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
     setBusy(true);
     setError("");
     try {
-      if (!hasConsent) saveConsent();
       const accessToken = await signInToNexura(address, signMessageAsync);
       try {
         const res = await devAccessApi<{ token: string; access: DevAccessRole }>("/verify-session", {
@@ -207,19 +200,7 @@ function SignInScreen({ onIn }: { onIn: (role: DevAccessRole) => void }) {
         ) : (
           <>
             {wallet}
-            {!hasConsent && (
-              <div className="flex flex-col gap-[10px] rounded-[20px] border-[1.25px] border-[#e8e4f6] bg-[#fbfaff] p-[14px] text-left">
-                <label className="flex cursor-pointer items-start gap-[10px] text-[13px] leading-[19px] text-[#1c2533]">
-                  <input type="checkbox" checked={adult} onChange={e => setAdult(e.target.checked)} className="mt-[2px] size-[16px] accent-[#8a3ffc]" />
-                  I am {MIN_AGE} years of age or older
-                </label>
-                <label className="flex cursor-pointer items-start gap-[10px] text-[13px] leading-[19px] text-[#1c2533]">
-                  <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-[2px] size-[16px] accent-[#8a3ffc]" />
-                  <span>I have read and agree to the <a href={`https://nexura.intuition.box${TERMS_URL}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#2563eb] underline underline-offset-2">Terms of Use</a> and <a href={`https://nexura.intuition.box${PRIVACY_URL}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#2563eb] underline underline-offset-2">Privacy Policy</a></span>
-                </label>
-              </div>
-            )}
-            <button onClick={signToCheck} disabled={busy || !canSign} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Check your wallet…" : "Sign to check access"}</button>
+            <button onClick={signToCheck} disabled={busy} className={`${btn} bg-[#8b3efe] text-white hover:bg-[#7b35e6]`}>{busy ? "Check your wallet…" : "Sign to check access"}</button>
             {otherWallet}
           </>
         )}

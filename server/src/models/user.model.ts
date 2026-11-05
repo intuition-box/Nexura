@@ -199,11 +199,6 @@ const userSchema = new Schema({
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "campaign",
 	}],
-	legalConsent: {
-		version: { type: String },
-		ageConfirmed: { type: Boolean },
-		acceptedAt: { type: Date },
-	},
 	// Nexura score: average campaign retention across settled campaigns (see utils/retention.ts)
 	nexuraScore: {
 		rate: { type: Number, default: null },
