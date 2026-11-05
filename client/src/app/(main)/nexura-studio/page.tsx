@@ -4,13 +4,13 @@ import StudioLiveGate from "@/components/studio/StudioLiveGate";
 
 export default function NexuraStudioPage() {
   return (
-    <div
-      className="flex min-h-full w-full flex-col items-center justify-center bg-[#f7f5ff] px-4 py-[60px] text-[#1c2533] sm:px-[32px]"
-      style={{ fontFamily: FONT, backgroundImage: HERO_BACKGROUND }}
-    >
-      <StudioLiveGate compact>
+    <StudioLiveGate>
+      <div
+        className="flex min-h-full w-full flex-col items-center justify-center bg-[#f7f5ff] px-4 py-[60px] text-[#1c2533] sm:px-[32px]"
+        style={{ fontFamily: FONT, backgroundImage: HERO_BACKGROUND }}
+      >
         <HeroIntro />
-      </StudioLiveGate>
-    </div>
+      </div>
+    </StudioLiveGate>
   );
 }
