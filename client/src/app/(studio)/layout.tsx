@@ -26,20 +26,19 @@ export default function StudioGroupLayout({ children }: { children: React.ReactN
       pathname.startsWith("/studio/sign-up") ||
       pathname.startsWith("/studio/reset-password");
 
-    document.body.classList.toggle("studio-theme", isStudioRoute);
+    document.body.classList.toggle("studio-theme", isStudioRoute && isStudioLive());
     return () => {
       document.body.classList.remove("studio-theme");
     };
   }, [pathname]);
 
-  if (isStudioPath(pathname) && !isStudioLive()) return <StudioUpgradeNotice />;
 
   return (
     <div className="flex h-screen w-full text-white selection:bg-blue-500/30 relative">
       <AnimatedBackground />
       <div className="flex-1 flex flex-col relative z-10">
         <main ref={mainRef} className="flex-1 overflow-y-auto">
-          {children}
+          {isStudioPath(pathname) && !isStudioLive() ? <StudioUpgradeNotice /> : children}
         </main>
       </div>
     </div>

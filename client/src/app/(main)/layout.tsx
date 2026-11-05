@@ -8,6 +8,7 @@ import ProfileBar from "@/components/ProfileBar";
 import ProjectLogoutButton from "@/components/ProjectLogoutButton";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import AnalyticsBackground from "@/components/AnalyticsBackground";
+import { isStudioLive } from "@/lib/studioAvailability";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const location = usePathname();
@@ -27,8 +28,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       location.startsWith("/studio/register") ||
       location.startsWith("/studio/reset-password");
 
-    document.body.classList.toggle("studio-theme", isStudioRoute);
-    document.body.classList.toggle("nexura-studio-light", location === "/nexura-studio");
+    document.body.classList.toggle("studio-theme", isStudioRoute && isStudioLive());
+    document.body.classList.toggle("nexura-studio-light", location === "/nexura-studio" && isStudioLive());
 
     return () => {
       document.body.classList.remove("studio-theme", "nexura-studio-light");
