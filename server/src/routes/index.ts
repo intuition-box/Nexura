@@ -23,6 +23,7 @@ import userHubRoutes from "./userHub.routes.ts";
 import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/authGuard";
 // import testSeedRoutes from "./test-seed.routes.ts";
 import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback, proveWallet } from "@/controllers/hub.auth.controller.ts";
+import { tokenPricesUsd } from "@/utils/tokenPrices";
 
 const router = Router();
 
@@ -31,6 +32,9 @@ router
 	.use("/dev-access", devAccessRoutes)
 	.get("/server-time", (_req, res) => {
 		res.json({ serverTime: Date.now() });
+	})
+	.get("/token-prices", async (_req, res) => {
+		res.json({ prices: await tokenPricesUsd() });
 	})
   // Sign-in and code checks are rate limited and lock out after repeated wrong attempts (see authGuard)
   .post("/admin/register", authIpLimiter, attemptGuard("platform-register"), createAdmin)

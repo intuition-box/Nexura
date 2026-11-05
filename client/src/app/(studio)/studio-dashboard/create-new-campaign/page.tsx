@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEther, parseEther } from "viem";
 import StudioLayout from "@/components/studio/StudioLayout";
@@ -14,6 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { writeUrlParam } from "@/hooks/use-url-state";
 import { useGovernanceProposer } from "@/components/studio/useGovernanceProposer";
 import type { ProposalAction } from "@/lib/adminGovernance";
+import CoHostPanel from "@/components/studio/coHost/CoHostPanel";
+import { loadTokenPrices, type TokenPrices } from "@/lib/tokenPrices";
+import { getCampaignCoHosts, getCoHostedCampaign, markCoHostReady, saveCoHostStages } from "@/lib/coHosts";
+import { useLiveRefresh } from "@/hooks/use-live-refresh";
 
 type RewardsDeployment = {
   txHash: string;
@@ -24,7 +28,7 @@ type RewardsDeployment = {
   maxClaimableParticipants: number;
 };
 
-type HubMe = { hub?: { pendingTxHash?: string | null; guildId?: string } };
+type HubMe = { hub?: { pendingTxHash?: string | null; guildId?: string }; admin?: { role?: string } };
 
 /**
  * On-chain payments (launch fee + funding the rewards contract).
@@ -103,7 +107,7 @@ type SavedCampaign = {
   _id: string; title?: string; description?: string; status?: string; starts_at?: string; ends_at?: string;
   projectCoverImage?: string; templateId?: string | null; rewardsEnabled?: boolean; maxParticipants?: number;
   reward?: { xp?: number; pool?: number; trustTokens?: number };
-  stages?: Array<{ key: string; name: string; returnDays?: number }>;
+  stages?: Array<{ key: string; name: string; returnDays?: number; owner?: string }>;
   builderState?: BuilderState | null;
 };
 
@@ -117,25 +121,32 @@ function toLocalInput(iso?: string): string {
 
 const isDefaultLink = (link?: string) => !link || link === "https://nexura.io" || Object.values(DEFAULT_LINK).includes(link);
 
-/** Rebuilds builder state from the stored campaign, for campaigns saved before the builder state was kept. */
-function stateFromCampaign(c: SavedCampaign, quests: SavedQuest[]): BuilderState {
-  const toTask = (q: SavedQuest, i: number): TaskEntry => {
-    const cat = TASK_CATALOG.find(t => t.id === q.taskTypeId) ?? TASK_CATALOG[0];
-    return {
-      id: `task-${q._id}-${i}`, taskTypeId: cat.id, name: cat.name, category: cat.category,
-      points: Number(q.points ?? cat.points) || 0,
-      description: q.quest && q.quest !== cat.name ? q.quest : "", subtext: cat.subtext,
-      ...(q.validationMode ? { validationMode: q.validationMode as TaskEntry["validationMode"] } : {}),
-      ...(q.apiEndpoint ? { apiEndpoint: q.apiEndpoint } : {}),
-      ...(!isDefaultLink(q.link) ? { taskUrl: q.link } : {}),
-    };
+function toTask(q: SavedQuest, i: number): TaskEntry {
+  const cat = TASK_CATALOG.find(t => t.id === q.taskTypeId) ?? TASK_CATALOG[0];
+  return {
+    id: `task-${q._id}-${i}`, taskTypeId: cat.id, name: cat.name, category: cat.category,
+    points: Number(q.points ?? cat.points) || 0,
+    description: q.quest && q.quest !== cat.name ? q.quest : "", subtext: cat.subtext,
+    ...(q.validationMode ? { validationMode: q.validationMode as TaskEntry["validationMode"] } : {}),
+    ...(q.apiEndpoint ? { apiEndpoint: q.apiEndpoint } : {}),
+    ...(!isDefaultLink(q.link) ? { taskUrl: q.link } : {}),
   };
-  const byOrder = (a: SavedQuest, b: SavedQuest) => (a.order ?? 0) - (b.order ?? 0);
-  const stages: BuilderState["stages"] = (c.stages ?? []).map(st => ({
+}
+
+const byOrder = (a: SavedQuest, b: SavedQuest) => (a.order ?? 0) - (b.order ?? 0);
+
+/** Stored stages and their tasks as builder stages. */
+function toBuilderStages(list: NonNullable<SavedCampaign["stages"]>, quests: SavedQuest[]): BuilderState["stages"] {
+  return list.map(st => ({
     id: st.key, name: st.name, returnDays: st.returnDays ?? 0,
     retentionType: (st.returnDays ?? 0) === 0 ? "immediately" : "custom",
     tasks: quests.filter(q => q.stage === st.key).sort(byOrder).map(toTask),
   }));
+}
+
+/** Rebuilds builder state from the stored campaign, for campaigns saved before the builder state was kept. */
+function stateFromCampaign(c: SavedCampaign, quests: SavedQuest[]): BuilderState {
+  const stages = toBuilderStages(c.stages ?? [], quests);
   // Tasks saved without a stage go into one stage of their own
   const loose = quests.filter(q => !q.stage || !stages.some(st => st.id === q.stage));
   if (loose.length) stages.push({ id: `stage-${c._id}`, name: "Stage 1", returnDays: 0, retentionType: "immediately", tasks: loose.sort(byOrder).map(toTask) });
@@ -178,6 +189,37 @@ export default function Page() {
   const feeTxHash = useRef<string | null>(null);
   const deployment = useRef<RewardsDeployment | null>(null);
   const draftId = useRef<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [canManageCoHosts, setCanManageCoHosts] = useState(false);
+  const [tokenPrices, setTokenPrices] = useState<TokenPrices>({});
+  // Stages another studio built: shown read-only and kept fresh while they build
+  const [partners, setPartners] = useState<{ stages: BuilderState["stages"]; builtBy: Record<string, string> }>({ stages: [], builtBy: {} });
+  const coHostId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("cohost");
+  const [coHost, setCoHost] = useState<{ hostName: string; ready: boolean; myStudioId: string } | null>(null);
+  const [coHosting, setCoHosting] = useState<{ partnerName: string; status: "invited" | "building" | "ready" } | null>(null);
+  const loadPartners = useCallback(async () => {
+    try {
+      if (coHostId) {
+        const r = await getCoHostedCampaign(coHostId);
+        const hostStages = (r.campaign.stages ?? []).filter(st => !st.owner);
+        setPartners({ stages: toBuilderStages(hostStages, r.campaignQuests), builtBy: Object.fromEntries(hostStages.map(st => [st.key, r.host.name])) });
+        setCoHost(prev => (prev && prev.ready === r.me.ready ? prev : { hostName: r.host.name, ready: r.me.ready, myStudioId: r.me.studioId }));
+        return;
+      }
+      if (!campaignId) return;
+      const [{ campaignFound: c, campaignQuests: quests = [] }, { coHosts }] = await Promise.all([
+        projectApiRequest<{ campaignFound?: SavedCampaign; campaignQuests?: SavedQuest[] }>({ method: "GET", endpoint: "/hub/get-campaign", params: { id: campaignId } }),
+        getCampaignCoHosts(campaignId),
+      ]);
+      const names = Object.fromEntries(coHosts.map(x => [x.studio.id, x.studio.name]));
+      const partner = coHosts.find(x => x.status === "invited" || x.status === "accepted");
+      setCoHosting(partner ? { partnerName: partner.studio.name, status: partner.status === "invited" ? "invited" : partner.ready ? "ready" : "building" } : null);
+      const theirs = (c?.stages ?? []).filter(st => !!st.owner);
+      setPartners({ stages: toBuilderStages(theirs, quests), builtBy: Object.fromEntries(theirs.map(st => [st.key, names[st.owner ?? ""] ?? "your co-host"])) });
+    } catch { /* keep the last known partner stages */ }
+  }, [campaignId, coHostId]);
+  useEffect(() => { loadPartners(); }, [loadPartners]);
+  useLiveRefresh(loadPartners);
   // Set once published, so a late autosave can't create a second draft
   const published = useRef(false);
   const uploadedCover = useRef<File | null>(null);
@@ -190,6 +232,30 @@ export default function Page() {
   const [loaded, setLoaded] = useState<{ state: BuilderState | null; coverUrl: string | null; live: boolean } | null>(null);
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
+    projectApiRequest<HubMe>({ method: "GET", endpoint: "/hub/me" })
+      .then(me => setCanManageCoHosts(me?.admin?.role === "superadmin"))
+      .catch(() => setCanManageCoHosts(false));
+  }, []);
+  useEffect(() => {
+    const load = () => loadTokenPrices()
+      .then(prices => { if (Object.keys(prices).length) setTokenPrices(prices); })
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (coHostId) {
+      getCoHostedCampaign(coHostId)
+        .then(r => {
+          const mine = (r.campaign.stages ?? []).filter(st => st.owner === r.me.studioId);
+          const base = stateFromCampaign({ ...r.campaign, stages: mine }, r.campaignQuests.filter(q => mine.some(st => st.key === q.stage)));
+          setCoHost({ hostName: r.host.name, ready: r.me.ready, myStudioId: r.me.studioId });
+          setLoaded({ state: attachQuestIds({ ...base, step: 3 }, r.campaignQuests), coverUrl: null, live: false });
+        })
+        .catch(err => setLoadError(err instanceof Error ? err.message : "The campaign could not be loaded."));
+      return;
+    }
     const id = new URLSearchParams(window.location.search).get("edit");
     if (!id) { setLoaded({ state: null, coverUrl: null, live: false }); return; }
     projectApiRequest<{ campaignFound?: SavedCampaign; campaignQuests?: SavedQuest[] }>({ method: "GET", endpoint: "/hub/get-campaign", params: { id } })
@@ -197,10 +263,13 @@ export default function Page() {
         if (!c) throw new Error("Campaign not found.");
         const live = c.status !== "Save";
         draftId.current = c._id;
+        setCampaignId(c._id);
         storedReward.current = { xp: c.reward?.xp ?? 0, pool: c.reward?.pool ?? 0, trust: c.reward?.trustTokens ?? 0, maxParticipants: c.maxParticipants ?? 0 };
         const coverUrl = c.projectCoverImage && c.projectCoverImage !== "pending" ? c.projectCoverImage : null;
         storedCover.current = coverUrl;
-        let state = c.builderState?.version === 1 ? c.builderState : stateFromCampaign(c, quests);
+        const partnerKeys = new Set((c.stages ?? []).filter(st => !!st.owner).map(st => st.key));
+        const saved = c.builderState && [1, 2, 3].includes(c.builderState.version) ? c.builderState : stateFromCampaign(c, quests);
+        let state: BuilderState = { ...saved, stages: saved.stages.filter(st => !partnerKeys.has(st.id)) };
         // Editing a live campaign starts at its details, with the dates it really has now
         // (an approved end proposal may have moved the end date since the builder last saved)
         if (live) state = { ...state, step: 2, startDate: toLocalInput(c.starts_at) || state.startDate, endDate: toLocalInput(c.ends_at) || state.endDate };
@@ -299,6 +368,7 @@ export default function Page() {
       const campaignId = saved.campaignId ?? draftId.current;
       if (!campaignId) throw new Error("The campaign could not be saved.");
       draftId.current = campaignId;
+      setCampaignId(campaignId);
       // Once saved, a refresh reopens this draft instead of starting a new campaign
       if (!published.current) writeUrlParam("edit", campaignId);
       if (c.coverImage) uploadedCover.current = c.coverImage;
@@ -313,8 +383,33 @@ export default function Page() {
   /** Autosave: every change is saved, so work survives a closed tab or a shutdown. */
   const handleAutosave = async (c: PublishedCampaign): Promise<"saved" | "skipped"> => {
     if (published.current) return "skipped";
+    if (coHostId) {
+      if (coHost?.ready) return "skipped";
+      // The server keeps only this studio's own stages and tasks from the save
+      const me = await projectApiRequest<HubMe>({ method: "GET", endpoint: "/hub/me" }).catch(() => null);
+      const guildId = me?.hub?.guildId ?? "";
+      await saveCoHostStages(
+        coHostId,
+        c.stages.map(st => ({ key: st.id, name: st.name, returnDays: st.returnDays })),
+        c.stages.flatMap(st => st.tasks.map((t, i) => toQuest(t, guildId, st.id, i))),
+      );
+      return "saved";
+    }
     await saveDraft(c);
     return "saved";
+  };
+
+  /** The co-host commits its stages: they lock, its reward and fee shares are fixed, and the host can launch. */
+  const handleCoHostReady = async () => {
+    if (!coHostId) return;
+    try {
+      await markCoHostReady(coHostId);
+      toast({ title: "Your stages are ready", description: `${coHost?.hostName || "The host"} can now launch the campaign.` });
+      await loadPartners();
+      setCoHost(prev => (prev ? { ...prev, ready: true } : prev));
+    } catch (err) {
+      toast({ title: "Couldn't mark your stages ready", description: err instanceof Error ? err.message : "Try again shortly.", variant: "destructive" });
+    }
   };
 
   /** Published campaign: the edits go to Admin Management as a signed proposal, applied when a signer executes it after approval. */
@@ -443,6 +538,12 @@ export default function Page() {
           onPay={PAYMENTS_ENABLED ? handlePay : undefined}
           onPublish={loaded.live ? handleSaveLive : handlePublish}
           onAutosave={handleAutosave}
+          tokenPricesUsd={tokenPrices}
+          partnerStages={partners.stages}
+          lockedStages={coHost?.ready ? { ...partners.builtBy, ...Object.fromEntries((loaded.state?.stages ?? []).map(st => [st.id, "you · ready"])) } : partners.builtBy}
+          coHostMode={coHost ? { hostName: coHost.hostName, ready: coHost.ready, onReady: handleCoHostReady } : undefined}
+          coHosting={coHosting ?? undefined}
+          renderCoHosts={coHostId ? undefined : () => <CoHostPanel campaignId={campaignId} canManage={canManageCoHosts && !loaded.live} readOnlyReason={loaded.live ? "Co-hosts can only be invited before the campaign is published." : undefined} />}
         />
       )}
     </StudioLayout>

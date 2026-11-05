@@ -22,6 +22,7 @@ import hubAppRoutes from "./hub.app.routes";
 import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/authGuard";
 import { requireInHub, fromQuery, campaignInHub } from "@/utils/hubOwnership";
 import governanceRoutes from "./governance.routes";
+import { declineCoHostInvite, getCampaignCoHosts, getCoHostInvites, getCoHostedCampaign, inviteCoHost, markCoHostReady, removeCoHost, saveCoHostStages, searchCoHostStudios } from "@/controllers/coHost.controller";
 
 const router = Router();
 
@@ -44,6 +45,15 @@ router
   .put("/retention-draft", authenticateHubAdmin2, saveRetentionDraft)
   .get("/hub-admins", authenticateHubAdmin2, getHubAdmins)
   .patch("/publish-campaign", authenticateHubAdmin, requireInHub(campaignInHub, fromQuery("id"), "campaign"), requireStudioPayment, publishCampaign)
+  .get("/co-hosts/search", authenticateHubAdmin, searchCoHostStudios)
+  .get("/campaign-co-hosts", authenticateHubAdmin2, requireInHub(campaignInHub, fromQuery("id"), "campaign"), getCampaignCoHosts)
+  .post("/campaign-co-hosts/invite", authenticateHubAdmin, requireInHub(campaignInHub, fromQuery("id"), "campaign"), inviteCoHost)
+  .post("/campaign-co-hosts/remove", authenticateHubAdmin, requireInHub(campaignInHub, fromQuery("id"), "campaign"), removeCoHost)
+  .get("/co-host-invites", authenticateHubAdmin2, getCoHostInvites)
+  .post("/co-host-invites/decline", authenticateHubAdmin, declineCoHostInvite)
+  .get("/co-hosted-campaign", authenticateHubAdmin, getCoHostedCampaign)
+  .patch("/co-hosted-campaign/stages", authenticateHubAdmin, saveCoHostStages)
+  .post("/co-hosted-campaign/ready", authenticateHubAdmin, markCoHostReady)
   // --- Public routes ---
   // Sign-in and code checks are rate limited and lock out after repeated wrong attempts (see authGuard)
   .post("/sign-in", authIpLimiter, attemptGuard("hub-login"), signIn)

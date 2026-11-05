@@ -28,6 +28,8 @@ import { refreshUserRetention } from "@/utils/retention";
 import { COMPLETED_MARK, settleStageXp, syncCampaignXp } from "@/utils/campaignXp";
 import { checkTrustEligibility, creditReward } from "@/utils/campaignRewards";
 import { campaignRewardAsset, rewardAssetUnavailable } from "@/utils/rewardAssets";
+import { coHostPublishProblem, type CoHostEntry } from "@/utils/coHosts";
+import { lapseStaleCoHosts } from "@/controllers/coHost.controller";
 
 interface IReward {
 	xp: number;
@@ -48,13 +50,19 @@ const DISCORD_CAMPAIGN_TAGS = new Set([
 const isDiscordCampaignTask = (task: Record<string, any>) =>
 	DISCORD_CAMPAIGN_TAGS.has(String(task?.tag ?? "").trim()) || String(task?.category ?? "").trim() === "discord";
 
-const hasDiscordTasksInCampaign = async (campaignId: string) => {
-	const quests = await campaignQuest.find({ campaign: campaignId }).select("tag category").lean();
+/** Only the host's tasks: a co-host's Discord tasks run on the co-host's own server. */
+const hostTasksOf = (campaignDoc: any) => {
+	const partnerKeys = ((campaignDoc?.stages ?? []) as any[]).filter(s => String(s.owner ?? "") !== "").map(s => String(s.key));
+	return { campaign: String(campaignDoc?._id ?? "").trim(), ...(partnerKeys.length ? { stage: { $nin: partnerKeys } } : {}) };
+};
+
+const hasDiscordTasksInCampaign = async (campaignDoc: any) => {
+	const quests = await campaignQuest.find(hostTasksOf(campaignDoc)).select("tag category").lean();
 	return quests.some((quest: any) => isDiscordCampaignTask(quest));
 };
 
-const getCampaignDiscordGuildIds = async (campaignId: string) => {
-	const quests = await campaignQuest.find({ campaign: campaignId }).select("guildId tag category").lean();
+const getCampaignDiscordGuildIds = async (campaignDoc: any) => {
+	const quests = await campaignQuest.find(hostTasksOf(campaignDoc)).select("guildId tag category").lean();
 	return Array.from(
 		new Set(
 			quests
@@ -69,7 +77,7 @@ const resolveCampaignDiscordLaunchGuildId = async (campaignDoc: any) => {
 	const storedGuildId = String(campaignDoc?.discordLaunchGuildId ?? "").trim();
 	if (storedGuildId) return storedGuildId;
 
-	const guildIds = await getCampaignDiscordGuildIds(String(campaignDoc?._id ?? "").trim());
+	const guildIds = await getCampaignDiscordGuildIds(campaignDoc);
 	return guildIds[0] ?? "";
 };
 
@@ -130,6 +138,15 @@ const getTemporalCampaignStatus = (campaignDoc: {
 	return "Active";
 };
 
+/** Accepted co-hosts of each campaign, with only what the app shows: name and logo. */
+export async function publicCoHostsByCampaign(list: any[]): Promise<Map<string, Array<{ id: string; name: string; logo: string }>>> {
+	const accepted = (c: any) => ((c.coHosts ?? []) as any[]).filter(x => x.status === "accepted");
+	const ids = [...new Set(list.flatMap(c => accepted(c).map(x => String(x.hub))))];
+	const hubs = ids.length ? await hub.find({ _id: { $in: ids } }).select("name logo").lean() as any[] : [];
+	const byId = new Map(hubs.map(h => [String(h._id), { id: String(h._id), name: String(h.name ?? ""), logo: String(h.logo ?? "") }]));
+	return new Map(list.map(c => [String(c._id), accepted(c).map(x => byId.get(String(x.hub))).filter((h): h is { id: string; name: string; logo: string } => !!h)]));
+}
+
 export const fetchCampaigns = async (
 	req: GlobalRequest,
 	res: GlobalResponse
@@ -145,6 +162,7 @@ export const fetchCampaigns = async (
 				select: "name description logo website xAccount discordServer guildId",
 			})
 			.lean();
+		const partners = await publicCoHostsByCampaign(campaigns);
 		const statusUpdates: Array<{ _id: any; status: string }> = [];
 		const normalizedCampaigns = campaigns.map((c) => {
 			const normalizedStatus = getTemporalCampaignStatus(c);
@@ -174,7 +192,7 @@ export const fetchCampaigns = async (
 					guildId: "",
 				};
 
-			return normalizeCampaignDatesForResponse({ ...c, status: publicStatus, hubInfo });
+			return normalizeCampaignDatesForResponse({ ...c, status: publicStatus, hubInfo, coHosts: partners.get(String(c._id)) ?? [] });
 		});
 
 		if (statusUpdates.length > 0) {
@@ -1010,6 +1028,7 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 			return;
 		}
 
+		await lapseStaleCoHosts(id);
 		const campaignExists = await campaign.findById(id);
 		if (!campaignExists) {
 			return res.status(NOT_FOUND).json({ error: "campaign not found" });
@@ -1017,6 +1036,13 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 
 		if (campaignExists.status !== "Save") {
 			return res.status(BAD_REQUEST).json({ error: "campaign is not in save status" });
+		}
+
+		const coHostList = ((campaignExists as any).coHosts ?? []) as CoHostEntry[];
+		if (coHostList.length) {
+			const partnerHubs = await hub.find({ _id: { $in: coHostList.map(c => c.hub) } }).select("name").lean() as any[];
+			const waiting = coHostPublishProblem(coHostList, Object.fromEntries(partnerHubs.map(h => [String(h._id), String(h.name ?? "")])));
+			if (waiting) return res.status(BAD_REQUEST).json({ error: waiting });
 		}
 
 		// Publishing is confirmed with the admin's wallet signature
@@ -1059,7 +1085,7 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 			});
 		}
 
-		const hasDiscordTasks = await hasDiscordTasksInCampaign(id);
+		const hasDiscordTasks = await hasDiscordTasksInCampaign(campaignExists);
 		const currentHubGuildId = String((createdHub as any).guildId ?? "").trim();
 		const lockedDiscordGuildId = await resolveCampaignDiscordLaunchGuildId(campaignExists);
 		const requiredDiscordGuildId = lockedDiscordGuildId || currentHubGuildId;
@@ -1079,7 +1105,7 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 
 			(campaignExists as any).discordLaunchGuildId = requiredDiscordGuildId;
 			await campaignQuest.updateMany(
-				{ campaign: id },
+				hostTasksOf(campaignExists),
 				[
 					{
 						$set: {
@@ -1138,6 +1164,8 @@ export const publishCampaign = async (req: GlobalRequest, res: GlobalResponse) =
 
 		campaignExists.status = publishedStatus;
 		await campaignExists.save();
+		// Launched with every partner paid: the co-hosts' held fees go through
+		await campaign.updateOne({ _id: campaignExists._id }, { $set: { "coHosts.$[e].feeStatus": "settled" } }, { arrayFilters: [{ "e.status": "accepted", "e.feeStatus": "held" }] });
 		await syncCampaignXp(campaignExists._id);
 		void recordHubActivity(req, "campaign", [{ field: "campaign", to: String(campaignExists.title ?? ""), from: publishedStatus }]);
 
@@ -1167,6 +1195,10 @@ export const deleteCampaign = async (req: GlobalRequest, res: GlobalResponse) =>
 		}
 		if (campaignToBeDeleted.status === "Deleted" || campaignToBeDeleted.deletedAt) {
 			res.status(NO_CONTENT).send();
+			return;
+		}
+		if (((campaignToBeDeleted as any).coHosts ?? []).some((c: any) => c.status === "accepted")) {
+			res.status(FORBIDDEN).json({ error: "a co-host accepted this campaign, so it can't be deleted unless they leave it first" });
 			return;
 		}
 

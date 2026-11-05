@@ -54,6 +54,13 @@ const submissionSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  reviewedAt: {
+    type: Date,
+  },
+  reviewNote: {
+    type: String,
+    default: ""
+  },
 }, { timestamps: true });
 
 export const submission = mongoose.model("submissions", submissionSchema);
