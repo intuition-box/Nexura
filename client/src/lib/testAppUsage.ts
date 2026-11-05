@@ -8,7 +8,7 @@ const IDLE_AFTER_MS = 2 * 60_000;
 const FIRST_PING_MS = 5_000;
 const USAGE_URL = `${BACKEND_URL}/api/dev-access/usage`;
 // Requests that aren't something the tester did (sign-in, the gate itself, background bookkeeping)
-const NOT_ACTIONS = [/^\/dev-access(\/|$)/, /^\/user\/sign-in$/, /^\/admin(\/|$)/, /notifications\/read$/, /^\/user\/consent$/];
+const NOT_ACTIONS = [/^\/dev-access(\/|$)/, /^\/user\/sign-in$/, /^\/admin(\/|$)/, /notifications\/read$/];
 
 const isId = (s: string) =>
   /^0x[0-9a-f]+$/i.test(s) || /^\d+$/.test(s) || /^[0-9a-f]{24}$/i.test(s) || /^[0-9a-f-]{32,36}$/i.test(s) ||

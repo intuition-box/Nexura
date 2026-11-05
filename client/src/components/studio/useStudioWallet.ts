@@ -8,7 +8,6 @@ import { clearWalletTokens, saveWalletToken, useWalletVerified, walletToken } fr
 import { apiRequestV2, buildUrl } from "@/lib/queryClient";
 import { emitSessionChange } from "@/lib/session";
 import { endProjectSession } from "@/lib/projectApi";
-import { requestLegalConsent, storedConsent } from "@/lib/legal";
 
 /** The main app's wallet session (same login as Studio): set after signing, cleared on disconnect. */
 function storeMainAppLogin(addr: string, message: string, signature: string, data: { user?: unknown; accessToken?: string }) {
@@ -180,7 +179,6 @@ Address: ${addr}
 Nonce: ${Date.now()}`;
       let signature: string;
       try {
-        if (!(await requestLegalConsent())) throw new Error("terms declined");
         signature = await Promise.race([
           signMessageAsync({ message }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), SIGN_TIMEOUT_MS)),
@@ -197,7 +195,7 @@ Nonce: ${Date.now()}`;
       try {
         // One wallet login for both apps: this signs in to the main app and proves the wallet to Studio
         const referrer = (() => { try { return localStorage.getItem("ref"); } catch { return null; } })();
-        const res = await apiRequestV2("POST", "/api/user/sign-in", { address: addr, referrer, message, signature, consent: storedConsent() }) as { walletToken?: string; user?: unknown; accessToken?: string };
+        const res = await apiRequestV2("POST", "/api/user/sign-in", { address: addr, referrer, message, signature }) as { walletToken?: string; user?: unknown; accessToken?: string };
         if (!res?.walletToken) throw new Error("no wallet token");
         saveWalletToken(addr, res.walletToken);
         storeMainAppLogin(addr, message, signature, res);
