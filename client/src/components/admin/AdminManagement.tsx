@@ -518,6 +518,8 @@ export default function AdminManagement() {
       case "thresholds": return ["to change approvals needed from ", { value: String(a.prevApproval) }, " to ", { value: String(a.approval) }];
       case "endCampaign": return ["to end the campaign ", { value: a.campaignTitle ?? title }];
       case "editCampaign": return ["to edit the campaign ", { value: a.campaignTitle ?? title }];
+      case "acceptCoHost": return ["to co-host ", { value: a.hostName || "another studio" }, "'s campaign ", { value: a.campaignTitle ?? title }];
+      case "leaveCoHost": return ["to stop co-hosting ", { value: a.hostName || "another studio" }, "'s campaign ", { value: a.campaignTitle ?? title }];
       default: return [{ value: title }];
     }
   };

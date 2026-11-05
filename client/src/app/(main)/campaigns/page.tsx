@@ -48,6 +48,7 @@ interface Campaign {
   joined: boolean;
   status?: string;
   hubInfo?: HubInfo;
+  coHosts?: Array<{ id: string; name: string; logo: string }>;
 }
 
 export default function Campaigns() {
@@ -306,6 +307,12 @@ export default function Campaigns() {
               {hubInfo.name}
             </button>
           </div>
+          {!!campaign.coHosts?.length && (
+            <div className="flex flex-row justify-between text-xs gap-1 items-center">
+              <span className="text-gray-500">Co-host:</span>
+              <span className="text-white line-clamp-1 break-all max-w-[65%] text-right">{campaign.coHosts.map(c => c.name).join(", ")}</span>
+            </div>
+          )}
 
           <div className="flex flex-row justify-between text-xs gap-1 items-center">
             <span className="text-gray-500">Participants:</span>

@@ -13,6 +13,7 @@ import { useWallet } from "../../hooks/use-wallet";
 import { ArrowDownToLine, RefreshCw, Trash2, Loader2, Clock, Pencil, Eye, CalendarX2, ImageIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { useGovernanceProposer } from "../studio/useGovernanceProposer";
+import CoHostInvites from "../studio/coHost/CoHostInvites";
 import { apiRequestV2 } from "../../lib/queryClient";
 import { closeRewardCampaign, getRewardCampaignCreator, getRewardContractBalance, syncRewardContractStartDate } from "../../lib/performOnchainAction";
 import { formatEther } from "viem";
@@ -533,6 +534,8 @@ export default function CampaignsTab() {
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
+
+        <CoHostInvites canManage={isSuperAdmin} />
 
         <div className="flex border-b-[0.833px] border-[rgba(28,37,51,0.09)] gap-[2px] overflow-x-auto">
           {tabs.map((tab) => (

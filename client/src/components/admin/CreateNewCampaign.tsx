@@ -1,5 +1,8 @@
 "use client";
 import { NexuraScoreInfoButton } from "@/components/studio/NexuraScoreExplainer";
+import CampaignSimulator from "./CampaignSimulator";
+import { eligibleAt } from "@/lib/campaignSimulator";
+import { BUILDER_STATE_VERSION, STEP, migrateBuilderStep } from "@/lib/campaignSteps";
 import React, { useState, useRef, useEffect } from "react";
 import { scrollToTop } from "@/lib/scrollToTop";
 import SignInPrompt from "@/components/studio/SignInPrompt";
@@ -109,6 +112,46 @@ function MenuRow({ selected, onClick, logo, title, sub }: { selected: boolean; o
     </button>
   );
 }
+/** Reward token button with its logo, opening the tokens grouped by network. */
+function TokenPicker({ network, token, disabled, onSelect, size = "md" }: {
+  network: NetworkId; token: TokenSymbol; disabled?: boolean; onSelect: (network: NetworkId, token: TokenSymbol) => void; size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const small = size === "sm";
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+      <button type="button" aria-haspopup="listbox" aria-expanded={open} aria-label="Reward token" disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        style={{ height: small ? 30 : 36, display: "flex", alignItems: "center", gap: 7, padding: small ? "0 8px 0 4px" : "0 10px 0 5px", background: "white", border: open ? "1px solid #8b3efe" : "1px solid rgba(28,37,51,0.12)", borderRadius: 40, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.7 : 1, fontFamily: "inherit", boxShadow: "0 1px 2px rgba(28,37,51,0.06)" }}>
+        <ChainLogo logo={TOKEN_LOGO[token]} size={small ? 22 : 26} />
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1c2533" }}>{token}</span>
+        <FigmaIcon name="chevron" />
+      </button>
+      {open && (
+        <div role="listbox" aria-label="Token" className="modal-scroll" style={{ ...POPOVER, right: 0, width: 280, maxHeight: 360, overflowY: "auto" }}>
+          {NETWORKS.map(net => (
+            <div key={net.id} role="group" aria-label={net.name}>
+              <div style={{ ...POPOVER_TITLE, display: "flex", alignItems: "center", gap: 6 }}><ChainLogo logo={net.logo} size={12} />{net.name}</div>
+              {net.tokens.map(t => (
+                <MenuRow key={`${net.id}-${t}`} selected={network === net.id && token === t} onClick={() => { onSelect(net.id, t); setOpen(false); }} logo={TOKEN_LOGO[t]} title={t} sub={`${TOKEN_NAMES[t]} · ${net.name}`} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NetworkList({ value, onSelect }: { value: NetworkId; onSelect: (id: NetworkId) => void }) {
   return (
     <div role="listbox" aria-label="Network" style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -457,11 +500,11 @@ function Header({ saveState = "idle", saveError, activeChain, onChainChange, wal
 
 // ─── WIZARD PROGRESS BAR ──────────────────────────────────────────────────────
 const STEPS = [
-  { n: 1, label: "Template",          sub: "Starting point"   },
-  { n: 2, label: "Details",           sub: "Name, duration..."  },
-  { n: 3, label: "Journey",           sub: "Stages & tasks"   },
-  { n: 4, label: "Rewards & Funding", sub: "Budget & payment" },
-  { n: 5, label: "Review & Fund",     sub: "Summary & Publish" },
+  { n: STEP.template, label: "Template",          sub: "Starting point"   },
+  { n: STEP.details,  label: "Details",           sub: "Name, duration..."  },
+  { n: STEP.journey,  label: "Journey",           sub: "Stages & tasks"   },
+  { n: STEP.rewards,  label: "Rewards & Funding", sub: "Budget & payment" },
+  { n: STEP.review,   label: "Review & Fund",     sub: "Summary & Publish" },
 ];
 
 function WizardProgress({ currentStep, onStepClick, minStep = 1, maxStep = 0 }: { currentStep: number; onStepClick?: (step: number) => void; minStep?: number; maxStep?: number }) {
@@ -472,7 +515,7 @@ function WizardProgress({ currentStep, onStepClick, minStep = 1, maxStep = 0 }: 
         // Steps already reached (before or after this one) stay done and can be reopened, except those before minStep
         const completed = !active && (step.n < currentStep || step.n <= maxStep);
         const clickable = completed && step.n >= minStep && !!onStepClick;
-        const isWide    = step.n === 4; // "Rewards & Funding" is wider
+        const isWide    = step.n === STEP.rewards; // "Rewards & Funding" is wider
 
         return (
           <React.Fragment key={step.n}>
@@ -494,7 +537,7 @@ function WizardProgress({ currentStep, onStepClick, minStep = 1, maxStep = 0 }: 
               background: active ? "rgba(138,63,252,0.12)" : "transparent",
               flex: "0 1 auto", minWidth: 0, boxSizing: "border-box" as const,
               height: 54,
-              width: step.n === 1 ? 147 : step.n === 2 ? 160 : step.n === 3 ? 160 : undefined,
+              width: step.n === STEP.template ? 147 : undefined,
               justifyContent: step.n === 1 ? "flex-start" : "center",
             }}>
               {/* Circle */}
@@ -513,10 +556,10 @@ function WizardProgress({ currentStep, onStepClick, minStep = 1, maxStep = 0 }: 
               </div>
               {/* Labels */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: step.n === 1 ? "flex-start" : "center", gap: 0, minWidth: 0, overflow: "hidden" }}>
-                <span style={{ fontSize: step.n === 4 ? 13.5 : 13, fontWeight: 600, color: active ? "#1c2533" : "#767a8c", lineHeight: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                <span style={{ fontSize: isWide ? 13.5 : 13, fontWeight: 600, color: active ? "#1c2533" : "#767a8c", lineHeight: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
                   {step.label}
                 </span>
-                <span style={{ fontSize: step.n === 4 ? 11.5 : 11, fontWeight: 400, color: step.n === 4 ? "#98a0b4" : "#9a9dae", lineHeight: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                <span style={{ fontSize: isWide ? 11.5 : 11, fontWeight: 400, color: isWide ? "#98a0b4" : "#9a9dae", lineHeight: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
                   {step.sub}
                 </span>
               </div>
@@ -896,7 +939,7 @@ export type PublishedCampaign = {
 };
 /** Everything on screen in the builder, including the step the admin was on. */
 export type BuilderState = {
-  version: 1;
+  version: 1 | 2 | 3;
   step: number;
   templateId: string | null;
   journeyCadence: "daily" | "weekly";
@@ -927,7 +970,22 @@ export default function CreateNewCampaign({
   initialState,
   initialCoverUrl,
   mode = "create",
+  renderCoHosts,
+  lockedStages,
+  partnerStages,
+  coHostMode,
+  coHosting,
 }: {
+  /** Stage id → name of the studio that built it; those stages are read-only here. */
+  lockedStages?: Record<string, string>;
+  /** The "run this campaign with another studio?" question, shown at the top of the Details step. */
+  renderCoHosts?: () => React.ReactNode;
+  /** Stages a partner studio built. They show in the journey and the reward split, read-only. */
+  partnerStages?: BuilderState["stages"];
+  /** Set when a co-host opens the host's draft: it only builds its own stages, then marks them ready. */
+  coHostMode?: { hostName: string; ready: boolean; onReady: () => void };
+  /** The host's partner on a co-hosted campaign, for the Rewards & Funding invoice. */
+  coHosting?: { partnerName: string; status: "invited" | "building" | "ready" };
   /** A saved draft to reopen: the builder starts on the step it was left on, with every field filled in. */
   initialState?: BuilderState | null;
   /** Cover image already stored for the campaign being reopened. */
@@ -966,10 +1024,12 @@ export default function CreateNewCampaign({
   const templateLocked = mode === "live" || init !== null;
   // A refresh reopens the step in the URL (?step=), falling back to where the draft was saved
   const [currentStep, setCurrentStep] = useState<number>(() => {
+    if (coHostMode) return STEP.journey;
     if (!templateLocked) return 1;
     const fromUrl = Number(readUrlParam("step"));
-    const step = Number.isInteger(fromUrl) && fromUrl >= 2 && fromUrl <= 5 ? fromUrl : Math.max(init?.step ?? 2, 2);
-    return step === 4 && init?.rewardsEnabled === false ? 3 : step;
+    const saved = init ? migrateBuilderStep(init.step, init.version) : STEP.details;
+    const step = Number.isInteger(fromUrl) && fromUrl >= STEP.details && fromUrl <= STEP.review ? fromUrl : Math.max(saved, STEP.details);
+    return step === STEP.rewards && init?.rewardsEnabled === false ? STEP.journey : step;
   });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(init?.templateId ?? null);
   const [startChoice, setStartChoice] = useState<{ kind: "template"; id: string } | { kind: "scratch" } | null>(null);
@@ -977,7 +1037,7 @@ export default function CreateNewCampaign({
   const [showJourneyTpl, setShowJourneyTpl] = useState(false);
   const [journeyCadence, setJourneyCadence] = useState<"daily" | "weekly">(init?.journeyCadence ?? "weekly");
   const goToStep = (step: number) => { setCurrentStep(step); scrollToTop(); };
-  const [furthestStep, setFurthestStep] = useState(() => Math.max(init?.furthestStep ?? 0, init?.step ?? 0, currentStep));
+  const [furthestStep, setFurthestStep] = useState(() => Math.max(init ? migrateBuilderStep(init.furthestStep ?? 0, init.version) : 0, init ? migrateBuilderStep(init.step, init.version) : 0, currentStep));
   useEffect(() => { setFurthestStep(f => Math.max(f, currentStep)); }, [currentStep]);
   // Every step opens at the top (the Studio scrolls inside its <main> panel, not the window)
   useEffect(() => { scrollToTop(); writeUrlParam("step", currentStep > 1 ? String(currentStep) : null); }, [currentStep]);
@@ -1005,6 +1065,16 @@ export default function CreateNewCampaign({
 
   // ── Step 3 state ──
   const [stages, setStages] = useState<BuilderState["stages"]>(init?.stages ?? []);
+  const partnerKey = JSON.stringify(partnerStages ?? []);
+  useEffect(() => {
+    const incoming = partnerStages ?? [];
+    const ids = new Set([...incoming.map(st => st.id), ...Object.keys(lockedStages ?? {})]);
+    setStages(prev => {
+      const own = prev.filter(st => !ids.has(st.id));
+      return coHostMode ? [...incoming, ...own] : [...own, ...incoming];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partnerKey]);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [addStageHovered, setAddStageHovered] = useState(false);
   const [useJourneyTplHovered, setUseJourneyTplHovered] = useState(false);
@@ -1028,16 +1098,6 @@ export default function CreateNewCampaign({
   const [rewardBudget, setRewardBudget] = useState(init?.rewardBudget ?? "");
   const [rewardNetwork, setRewardNetwork] = useState<NetworkId>(init?.rewardNetwork ?? DEFAULT_NETWORK);
   const [rewardToken, setRewardToken] = useState<TokenSymbol>(init?.rewardToken ?? NETWORKS.find(n => n.id === DEFAULT_NETWORK)!.tokens[0]);
-  const [tokenMenuOpen, setTokenMenuOpen] = useState(false);
-  const tokenMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!tokenMenuOpen) return;
-    const onDown = (e: MouseEvent) => { if (tokenMenuRef.current && !tokenMenuRef.current.contains(e.target as Node)) setTokenMenuOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTokenMenuOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [tokenMenuOpen]);
   const [rewardRecipients, setRewardRecipients] = useState(init?.rewardRecipients ?? "");
   const [retentionRequirement, setRetentionRequirement] = useState(init?.retentionRequirement ?? DEFAULT_RETENTION_REQUIREMENT);
   const templateEndDateRef = useRef<string | null>(null); // end date the template filled in, so scratch can undo it
@@ -1116,6 +1176,13 @@ export default function CreateNewCampaign({
   const participantPool = budgetUsd * participationPct / 100;               // USD
   const openingFeeTokens = priceKnown ? OPENING_FEE_USD / (tokenPriceUsd as number) : null;
   const totalPaymentDue = openingFeeTokens !== null ? budgetNum + openingFeeTokens : null; // in rewardToken
+  const partnerPct = coHosting ? round1(stages.reduce((n, st) => n + (lockedStages?.[st.id] ? Math.max(0, Number(stageAlloc[st.id]) || 0) : 0), 0)) : 0;
+  const partnerBudget = budgetNum * partnerPct / 100;
+  const hostBudget = budgetNum - partnerBudget;
+  const feeSplit = coHosting && coHosting.status !== "invited" ? 2 : 1;
+  const yourOpeningFee = openingFeeTokens !== null ? openingFeeTokens / feeSplit : null;
+  // What this studio pays: everything, or on a co-hosted campaign its own stages and its part of the fee
+  const yourPaymentDue = !coHosting ? totalPaymentDue : yourOpeningFee !== null ? hostBudget + yourOpeningFee : null;
   const fmtToken = (n: number) => isStableToken ? fmtUSD(n) : `${n.toLocaleString("en-US", { maximumFractionDigits: n >= 100 ? 2 : 4 })} ${rewardToken}`;
   const usdHint = (n: number) => (!isStableToken && priceKnown) ? ` (≈ ${fmtUSD(n * (tokenPriceUsd as number))})` : "";
   const recipientsNum = Math.max(0, Math.floor(Number(rewardRecipients) || 0));
@@ -1131,7 +1198,8 @@ export default function CreateNewCampaign({
   const totalAllocated = round1(allocValues.reduce((a, b) => a + b, 0));
   const stageMinPct = maxPerRecipient > 0 ? Math.ceil((MIN_PER_STAGE_USD / maxPerRecipient) * 1000) / 10 : 100;
   const stageAllocErrors = allocValues.map(v => priceKnown && v > 0 && (maxPerRecipient * v / 100) < MIN_PER_STAGE_USD);
-  const paymentKey = totalPaymentDue !== null ? `${rewardNetwork}|${rewardToken}|${totalPaymentDue}` : null;
+  // What was paid for; live price moves (which change the fee in tokens) don't undo a payment
+  const paymentKey = budgetNum > 0 ? `${rewardNetwork}|${rewardToken}|${budgetNum}` : null;
   // A live campaign was paid for when it was published
   const isPaid = mode === "live" || (paidKey !== null && paidKey === paymentKey);
   const rewardsValid = priceKnown && budgetNum > 0 && recipientsNum > 0 && !recipientsOverCapacity && Math.abs(totalAllocated - 100) < 0.05 && !stageAllocErrors.some(Boolean);
@@ -1140,23 +1208,23 @@ export default function CreateNewCampaign({
   function jumpToStep(n: number) {
     if (n > currentStep) {
       const journeyOk = stages.length > 0 && stages.every(st => st.tasks.length > 0);
-      if (n >= 4 && !journeyOk) n = 3;
-      if (n === 4 && !rewardsEnabled) n = 5;
-      if (n === 5 && rewardsEnabled && !canContinueToReview) n = 4;
+      if (n >= STEP.rewards && !journeyOk) n = STEP.journey;
+      if (n === STEP.rewards && !rewardsEnabled) n = STEP.review;
+      if (n === STEP.review && rewardsEnabled && !canContinueToReview) n = STEP.rewards;
     }
     goToStep(n);
   }
   const activeNetworkInfo = NETWORKS.find(n => n.id === rewardNetwork) || NETWORKS[0];
 
   async function handlePay() {
-    if (!rewardsValid || !paymentKey || totalPaymentDue === null || payStatus === "awaiting" || !connectedAddress) return;
+    if (!rewardsValid || !paymentKey || yourPaymentDue === null || payStatus === "awaiting" || !connectedAddress) return;
     const key = paymentKey;
     if (!onPay) { setPaidKey(key); return; }
     setPayStatus("awaiting"); setPayError("");
     try {
       const res = await onPay({
         network: rewardNetwork, chainId: activeNetworkInfo.chainId, token: rewardToken,
-        totalAmount: totalPaymentDue, rewardBudget: budgetNum, openingFee: openingFeeTokens ?? 0,
+        totalAmount: yourPaymentDue, rewardBudget: coHosting ? hostBudget : budgetNum, openingFee: yourOpeningFee ?? 0,
         participantPool: participantPoolTokens, recipients: recipientsNum,
         campaignName: campaignName.trim(), startDate,
       });
@@ -1224,10 +1292,11 @@ export default function CreateNewCampaign({
       name: campaignName.trim(), description: campaignDescription.trim(), coverImage: coverFile, startDate, endDate, rewardsEnabled,
       templateId: selectedTemplateId,
       stages: stages.map(st => ({ id: st.id, name: st.name, returnDays: st.returnDays, tasks: st.tasks.map(t => ({ ...t, title: t.description.trim() || t.name })), allocationPct: rewardsEnabled ? (Number(stageAlloc[st.id]) || 0) : null })),
-      rewards: rewardsEnabled ? { budget: budgetNum, token: rewardToken, network: rewardNetwork, validationRewardsOn, curatorRewardsOn, curatorAddress: projectCurator?.address ?? null, recipients: recipientsNum, nexuraScoreRequirementPct: Number(retentionRequirement) || 0, participantPool: participantPoolTokens, totalPaid: isPaid && totalPaymentDue !== null ? totalPaymentDue : 0, paymentTxHash: isPaid ? paymentTxHash : null } : null,
+      rewards: rewardsEnabled ? { budget: budgetNum, token: rewardToken, network: rewardNetwork, validationRewardsOn, curatorRewardsOn, curatorAddress: projectCurator?.address ?? null, recipients: recipientsNum, nexuraScoreRequirementPct: Number(retentionRequirement) || 0, participantPool: participantPoolTokens, totalPaid: isPaid && yourPaymentDue !== null ? yourPaymentDue : 0, paymentTxHash: isPaid ? paymentTxHash : null } : null,
       builder: {
-        version: 1, step: currentStep, templateId: selectedTemplateId, journeyCadence, rewardsEnabled,
-        name: campaignName, description: campaignDescription, startDate, endDate, stages,
+        version: BUILDER_STATE_VERSION, step: currentStep, templateId: selectedTemplateId, journeyCadence, rewardsEnabled,
+        // Partner studios' stages always come from the server, so the saved builder only keeps this studio's own
+        name: campaignName, description: campaignDescription, startDate, endDate, stages: stages.filter(st => !isStageLocked(st.id)),
         rewardBudget, rewardNetwork, rewardToken, rewardRecipients, retentionRequirement, stageAlloc,
         paidKey, paymentTxHash, furthestStep,
       },
@@ -1328,7 +1397,7 @@ export default function CreateNewCampaign({
   // A campaign template sets up its stages straight away: open the daily/weekly picker the first time the empty journey is shown
   const autoOpenedTplRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentStep === 3 && selectedTemplateId && stages.length === 0 && autoOpenedTplRef.current !== selectedTemplateId) {
+    if (currentStep === STEP.journey && selectedTemplateId && stages.length === 0 && autoOpenedTplRef.current !== selectedTemplateId) {
       autoOpenedTplRef.current = selectedTemplateId;
       setShowJourneyTpl(true);
     }
@@ -1341,10 +1410,25 @@ export default function CreateNewCampaign({
     setActiveStageId(tplStages[0].id);
     setShowJourneyTpl(false);
   }
+  /** Stages an accepted co-host owns can't be edited by either partner. */
+  const isStageLocked = (id: string) => !!lockedStages?.[id];
+
+  /** Splits what the locked stages leave of 100% across the other stages; locked shares stay as the co-host accepted them. */
+  function splitAroundLocked(split: (count: number) => number[]) {
+    const free = stages.filter(st => !isStageLocked(st.id));
+    const lockedSum = stages.filter(st => isStageLocked(st.id)).reduce((a, st) => a + (Number(stageAlloc[st.id]) || 0), 0);
+    const left = Math.max(0, 100 - lockedSum);
+    const parts = split(free.length).map(p => round1(p * left / 100));
+    if (parts.length) parts[parts.length - 1] = round1(left - parts.slice(0, -1).reduce((a, b) => a + b, 0));
+    setStageAlloc(prev => ({ ...prev, ...Object.fromEntries(free.map((st, i) => [st.id, String(parts[i])])) }));
+  }
+
   function handleUpdateStageName(id: string, name: string) {
+    if (isStageLocked(id)) return;
     setStages(prev => prev.map(s => s.id === id ? { ...s, name } : s));
   }
   function handleDeleteStage(id: string) {
+    if (isStageLocked(id)) return;
     setStages(prev => prev.filter(s => s.id !== id));
     if (activeStageId === id) setActiveStageId(null);
   }
@@ -1364,10 +1448,12 @@ export default function CreateNewCampaign({
     });
   }
   function handleSetRetention(id: string, days: number) {
+    if (isStageLocked(id)) return;
     const d = Math.max(0, Math.round(days || 0));
     setStages(prev => prev.map(s => s.id === id ? { ...s, returnDays: d, retentionType: d === 0 ? "immediately" : "custom" } : s));
   }
   function handleDuplicateTask(stageId: string, taskId: string) {
+    if (isStageLocked(stageId)) return;
     setStages(prev => prev.map(s => {
       if (s.id !== stageId || s.tasks.length >= MAX_TASKS_PER_STAGE) return s;
       const idx = s.tasks.findIndex(t => t.id === taskId);
@@ -1377,6 +1463,7 @@ export default function CreateNewCampaign({
     }));
   }
   function handleEditTask(stageId: string, task: TaskEntry) {
+    if (isStageLocked(stageId)) return;
     const item = TASK_CATALOG.find(t => t.id === task.taskTypeId);
     if (!item) return;
     setShowTaskModal(stageId);
@@ -1429,6 +1516,7 @@ export default function CreateNewCampaign({
   const canSaveTask = !!selectedTaskCatalogItem && !!taskDescInput.trim()
     && !(isSocialUrlTask(selectedTaskCatalogItem.id) && (!taskUrlInput.trim() || !!socialUrlError(selectedTaskCatalogItem.id, taskUrlInput)));
   function handleAddTask(stageId: string) {
+    if (isStageLocked(stageId)) return;
     if (!selectedTaskCatalogItem || !taskDescInput.trim()) return;
     if (isSocialUrlTask(selectedTaskCatalogItem.id) && (!taskUrlInput.trim() || socialUrlError(selectedTaskCatalogItem.id, taskUrlInput))) return;
     const newTask: TaskEntry = {
@@ -1454,6 +1542,7 @@ export default function CreateNewCampaign({
     handleCloseTaskModal();
   }
   function handleRemoveTask(stageId: string, taskId: string) {
+    if (isStageLocked(stageId)) return;
     setStages(prev => prev.map(s => s.id === stageId ? { ...s, tasks: s.tasks.filter(t => t.id !== taskId) } : s));
   }
   function getTaskUrlLabel(taskId: string): string {
@@ -1626,7 +1715,7 @@ export default function CreateNewCampaign({
       <Header saveState={saveState} saveError={saveError} activeChain={rewardNetwork} onChainChange={handleNetworkChange} walletAddress={connectedAddress} onConnectWallet={connectWallet} onDisconnectWallet={disconnectWallet} signedIn={signedIn} onSignIn={() => { window.location.href = STUDIO_SIGN_IN_URL; }} />
 
       {/* ══════════ STEP 1 ══════════ */}
-      {currentStep === 1 && (
+      {currentStep === STEP.template && (
         <div style={{ flex: 1, padding: "0 46px 56px 36px" }}>
 
           {/* Heading */}
@@ -1664,18 +1753,20 @@ export default function CreateNewCampaign({
       )}
 
       {/* ══════════ STEP 2 ══════════ */}
-      {currentStep === 2 && (
+      {currentStep === STEP.details && (
         <div style={{ flex: 1, padding: "0 46px 56px 36px" }}>
 
           {/* Wizard progress */}
           <div style={{ marginTop: 20 }}>
-            <WizardProgress currentStep={2} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
+            <WizardProgress currentStep={STEP.details} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
           </div>
 
           {/* Rewards toggle */}
           <div style={{ marginTop: 24 }}>
             <RewardsToggle enabled={rewardsEnabled} onChange={requestRewardsChange} />
           </div>
+
+          {renderCoHosts && <div style={{ marginTop: 12 }}>{renderCoHosts()}</div>}
 
           {/* Page heading */}
           <div style={{ marginTop: 24, marginBottom: 24 }}>
@@ -1849,25 +1940,27 @@ export default function CreateNewCampaign({
                 {"The start and end dates define when participants can join and complete campaign tasks."}
               </p>
             </div>
+
           </div>
         </div>
       )}
 
       {/* ══════════ STEP 3 ══════════ */}
-      {currentStep === 3 && (
+      {currentStep === STEP.journey && (
         <div style={stages.length === 0
           ? { flex: 1, padding: "0 46px 24px 36px", minHeight: "calc(100vh - 53px)", boxSizing: "border-box" as const, display: "flex", flexDirection: "column" }
           : { flex: 1, padding: "0 46px 56px 36px" }}>
 
-          {/* Wizard progress */}
-          <div style={{ marginTop: 20 }}>
-            <WizardProgress currentStep={3} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
-          </div>
-
-          {/* Rewards toggle */}
-          <div style={{ marginTop: 24 }}>
-            <RewardsToggle enabled={rewardsEnabled} onChange={requestRewardsChange} />
-          </div>
+          {!coHostMode && (
+            <>
+              <div style={{ marginTop: 20 }}>
+                <WizardProgress currentStep={STEP.journey} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <RewardsToggle enabled={rewardsEnabled} onChange={requestRewardsChange} />
+              </div>
+            </>
+          )}
 
           {/* Heading row */}
           <div style={{ marginTop: 30, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, flexWrap: "wrap" as const }}>
@@ -2027,6 +2120,12 @@ export default function CreateNewCampaign({
                   ? (stage.returnDays === 0 ? "Participants can start immediately after joining." : `Participants can start ${retentionLabel} after joining.`)
                   : (stage.returnDays === 0 ? "Participants can start immediately after the previous stage." : `Participants can start ${retentionLabel} after previous stage.`);
                 const presetValue = RETENTION_PRESETS.includes(stage.returnDays) ? String(stage.returnDays) : "custom";
+                const lockedBy = lockedStages?.[stage.id];
+                const lockChip = lockedBy && (
+                  <span title="Only the studio that built this stage can change it" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 10px", borderRadius: 20, background: "rgba(138,63,252,0.1)", fontSize: 11.5, fontWeight: 600, color: "#6e2bd8", whiteSpace: "nowrap" as const }}>
+                    Built by {lockedBy}
+                  </span>
+                );
                 return (
                   <React.Fragment key={stage.id}>
                     {/* connector between cards */}
@@ -2034,7 +2133,7 @@ export default function CreateNewCampaign({
 
                     {isActive ? (
                       /* ── EXPANDED STAGE CARD ── */
-                      <div style={{ background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.2)", borderRadius: 40, marginTop: idx === 0 ? -5 : 0 }}>
+                      <div aria-disabled={!!lockedBy} style={{ background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.2)", borderRadius: 40, marginTop: idx === 0 ? -5 : 0, ...(lockedBy ? { pointerEvents: "none" as const, opacity: 0.85 } : {}) }}>
                         {/* Header */}
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 13, padding: "16px 18px 2px" }}>
                           <div style={{ width: 5.99, flexShrink: 0 }} />
@@ -2044,7 +2143,10 @@ export default function CreateNewCampaign({
                             </div>
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a3ffc", letterSpacing: "0.945px", textTransform: "uppercase" as const, lineHeight: "16.27px", marginBottom: 5 }}>Stage {idx + 1}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#8a3ffc", letterSpacing: "0.945px", textTransform: "uppercase" as const, lineHeight: "16.27px" }}>Stage {idx + 1}</span>
+                              {lockChip}
+                            </div>
                             <div style={{ background: "#f4f1fc", border: "1px solid rgba(28,37,51,0.15)", borderRadius: 40, display: "flex", alignItems: "center", gap: 8, padding: "10.83px 11px 10.83px 13.83px", maxWidth: 340, boxSizing: "border-box" as const }}>
                               <input
                                 id={`stage-name-${stage.id}`}
@@ -2211,7 +2313,10 @@ export default function CreateNewCampaign({
                       <div style={{ background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.25)", borderRadius: 40, padding: 10, marginTop: idx === 0 ? -5 : 0 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24, padding: "16px 18px" }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a3ffc", letterSpacing: "0.945px", textTransform: "uppercase" as const, lineHeight: "16.27px" }}>Stage {idx + 1}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#8a3ffc", letterSpacing: "0.945px", textTransform: "uppercase" as const, lineHeight: "16.27px" }}>Stage {idx + 1}</span>
+                              {lockChip}
+                            </div>
                             <div style={{ fontSize: 15, fontWeight: 600, color: "#1c2533", letterSpacing: -0.15, lineHeight: "17.25px", marginTop: 2.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{stage.name || `Stage ${idx + 1}`}</div>
                             <div style={{ display: "flex", flexWrap: "wrap" as const, alignItems: "center", gap: "4px 8px", marginTop: 5 }}>
                               <button
@@ -2239,7 +2344,7 @@ export default function CreateNewCampaign({
                               style={{ ...stageIconBtn(22), opacity: stages.length >= MAX_STAGES ? 0.4 : 1 }}>
                               <FigmaIcon name="stageDup" />
                             </button>
-                            <button title="Delete stage" onClick={() => handleDeleteStage(stage.id)}
+                            <button title={lockedBy ? `Built by ${lockedBy}` : "Delete stage"} disabled={!!lockedBy} onClick={() => handleDeleteStage(stage.id)}
                               onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
                               onMouseLeave={e => { e.currentTarget.style.background = "#f7f4fe"; }}
                               style={stageIconBtn(22)}>
@@ -2292,7 +2397,7 @@ export default function CreateNewCampaign({
 
               {/* Back / Continue */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginTop: 30, flexWrap: "wrap" as const }}>
-                <button
+                {coHostMode ? <span /> : <button
                   onMouseEnter={() => setBackStep3Hovered(true)}
                   onMouseLeave={() => setBackStep3Hovered(false)}
                   onClick={() => setCurrentStep(2)}
@@ -2300,15 +2405,15 @@ export default function CreateNewCampaign({
                 >
                   <FigmaIcon name="arrowLeft" />
                   Back
-                </button>
+                </button>}
                 <button
-                  disabled={!journeyReady}
+                  disabled={!journeyReady || coHostMode?.ready}
                   onMouseEnter={() => setContinueStep3Hovered(true)}
                   onMouseLeave={() => setContinueStep3Hovered(false)}
-                  onClick={() => { if (!journeyReady) return; setActiveStageId(null); setCurrentStep(rewardsEnabled ? 4 : 5); scrollToTop(); }}
+                  onClick={() => { if (!journeyReady) return; setActiveStageId(null); if (coHostMode) { coHostMode.onReady(); return; } setCurrentStep(rewardsEnabled ? STEP.rewards : STEP.review); scrollToTop(); }}
                   style={{ height: 34, borderRadius: 40, padding: "0 16px", background: !journeyReady ? "#c4a6fe" : continueStep3Hovered ? "#7a28e8" : "#8b3efe", border: "1px solid transparent", cursor: journeyReady ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "white", fontFamily: "inherit", transition: "background 0.15s" }}
                 >
-                  {rewardsEnabled ? "Continue to rewards and funding" : "Continue to review"}
+                  {coHostMode ? (coHostMode.ready ? "Your stages are ready" : "Mark my stages ready") : rewardsEnabled ? "Continue to rewards and funding" : "Continue to review"}
                   <FigmaIcon name="arrowRightWhite" />
                 </button>
               </div>
@@ -2319,7 +2424,7 @@ export default function CreateNewCampaign({
       )}
 
       {/* ══════════ STEP 4 · REWARDS & FUNDING ══════════ */}
-      {currentStep === 4 && (() => {
+      {currentStep === STEP.rewards && (() => {
         const sectionCard: React.CSSProperties = { background: "white", border: "1.25px solid rgba(28,37,51,0.09)", borderRadius: 40, padding: 22, boxSizing: "border-box" as const };
         const sectionHead = (n: number, title: string, sub: string) => (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2343,13 +2448,13 @@ export default function CreateNewCampaign({
         return (
           <div style={{ flex: 1, padding: "0 46px 56px 36px" }}>
             {/* Back link */}
-            <button onClick={() => goToStep(3)} style={{ marginTop: 30, display: "flex", alignItems: "center", gap: 8, height: 34, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
+            <button onClick={() => goToStep(STEP.journey)} style={{ marginTop: 30, display: "flex", alignItems: "center", gap: 8, height: 34, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
               <FigmaIcon name="arrowLeft" />
               Back to journey
             </button>
 
             <div style={{ marginTop: 20 }}>
-              <WizardProgress currentStep={4} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
+              <WizardProgress currentStep={STEP.rewards} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
             </div>
 
             {/* Heading */}
@@ -2360,6 +2465,16 @@ export default function CreateNewCampaign({
 
             <div style={{ display: "flex", flexDirection: "column", gap: 28, marginTop: 31 }}>
 
+              <CampaignSimulator
+                budget={rewardBudget} setBudget={setRewardBudget} budgetLocked={isPaid}
+                recipients={rewardRecipients} setRecipients={setRewardRecipients}
+                score={retentionRequirement} setScore={setRetentionRequirement}
+                token={rewardToken} isStable={isStableToken} tokenPriceUsd={tokenPriceUsd}
+                participationPct={participationPct} minPerStageUsd={MIN_PER_STAGE_USD}
+                stageNames={stages.map((st, i) => st.name || `Stage ${i + 1}`)} stageAlloc={allocValues}
+                stats={retentionStats === undefined ? SAMPLE_RETENTION_STATS : retentionStats}
+                tokenPicker={<TokenPicker network={rewardNetwork} token={rewardToken} disabled={isPaid} onSelect={handleNetworkChange} size="sm" />} />
+
               {/* 1 · Budget & allocation */}
               <div style={sectionCard}>
                 {sectionHead(1, "Campaign Reward Budget & Allocation", "Set the budget. Fees come out first, and what is left is the pool for rewarding participants")}
@@ -2367,30 +2482,11 @@ export default function CreateNewCampaign({
                   {label("Campaign Reward Budget")}
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" as const, alignItems: "stretch" }}>
                     {/* Amount + token */}
-                    <div ref={tokenMenuRef} style={{ position: "relative" as const, flex: "1 1 100%", minWidth: 0 }}>
+                    <div style={{ position: "relative" as const, flex: "1 1 100%", minWidth: 0 }}>
                       <input inputMode="decimal" aria-label="Campaign reward budget" readOnly={isPaid} value={fmtInputNumber(rewardBudget)} onChange={e => { if (isPaid) return; const raw = e.target.value.replace(/[^0-9.]/g, ""); const [i, ...d] = raw.split("."); setRewardBudget(d.length ? `${i}.${d.join("")}` : i); }}  style={{ ...pillInput, paddingLeft: 22, paddingRight: 140 }} />
-                      <button aria-haspopup="listbox" aria-expanded={tokenMenuOpen} aria-label="Payment token"
-                        disabled={isPaid}
-                        onClick={() => setTokenMenuOpen(o => !o)}
-                        style={{ position: "absolute" as const, right: 5, top: 5, height: 36, display: "flex", alignItems: "center", gap: 7, padding: "0 10px 0 5px", background: "white", border: tokenMenuOpen ? "1px solid #8b3efe" : "1px solid rgba(28,37,51,0.12)", borderRadius: 40, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 1px 2px rgba(28,37,51,0.06)" }}>
-                        <ChainLogo logo={TOKEN_LOGO[rewardToken]} size={26} />
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1c2533" }}>{rewardToken}</span>
-                        <FigmaIcon name="chevron" />
-                      </button>
-                      {tokenMenuOpen && (
-                        <>
-                          <div role="listbox" aria-label="Token" className="modal-scroll" style={{ ...POPOVER, right: 0, width: 280, maxHeight: 360, overflowY: "auto" as const }}>
-                            {NETWORKS.map(net => (
-                              <div key={net.id} role="group" aria-label={net.name}>
-                                <div style={{ ...POPOVER_TITLE, display: "flex", alignItems: "center", gap: 6 }}><ChainLogo logo={net.logo} size={12} />{net.name}</div>
-                                {net.tokens.map(t => (
-                                  <MenuRow key={`${net.id}-${t}`} selected={rewardNetwork === net.id && rewardToken === t} onClick={() => { handleNetworkChange(net.id, t); setTokenMenuOpen(false); }} logo={TOKEN_LOGO[t]} title={t} sub={`${TOKEN_NAMES[t]} · ${net.name}`} />
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
+                      <div style={{ position: "absolute" as const, right: 5, top: 5 }}>
+                        <TokenPicker network={rewardNetwork} token={rewardToken} disabled={isPaid} onSelect={handleNetworkChange} />
+                      </div>
                     </div>
                   </div>
                   {help(isPaid
@@ -2439,8 +2535,8 @@ export default function CreateNewCampaign({
                     </div>
                   ))}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "13px 29px 13px 18px", background: "rgba(138,63,252,0.1)" }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1c2533", lineHeight: "20.925px" }}>Total Payment Due</span>
-                    <span style={{ fontSize: 17, fontWeight: 600, color: "#8a3ffc", fontFamily: mono, lineHeight: "26.35px" }}>{totalPaymentDue !== null ? fmtToken(totalPaymentDue) : "—"}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1c2533", lineHeight: "20.925px" }}>{coHosting ? "Your payment due" : "Total Payment Due"}</span>
+                    <span style={{ fontSize: 17, fontWeight: 600, color: "#8a3ffc", fontFamily: mono, lineHeight: "26.35px" }}>{yourPaymentDue !== null ? fmtToken(yourPaymentDue) : "—"}</span>
                   </div>
                 </div>
               </div>
@@ -2511,12 +2607,7 @@ export default function CreateNewCampaign({
                   const req = Math.min(100, Math.max(0, Number(retentionRequirement) || 0));
                   const stats = retentionStats === undefined ? SAMPLE_RETENTION_STATS : retentionStats;
                   const hasStats = !!stats && stats.buckets.length > 0;
-                  // Whole buckets at or above the requirement, plus the share of a bucket the requirement falls inside
-                  const eligible = hasStats ? Math.round(stats!.buckets.reduce((n, b) => {
-                    if (b.fromPct >= req) return n + b.users;
-                    if (b.toPct > req && b.toPct > b.fromPct) return n + b.users * (b.toPct - req) / (b.toPct - b.fromPct);
-                    return n;
-                  }, 0)) : 0;
+                  const eligible = hasStats ? eligibleAt(stats, req) : 0;
                   const box: React.CSSProperties = { height: 45, background: "#f4f1fc", border: "1.25px solid rgba(28,37,51,0.15)", borderRadius: 40, boxSizing: "border-box" as const, display: "flex", alignItems: "center" };
                   return (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, paddingTop: 16 }}>
@@ -2566,12 +2657,12 @@ export default function CreateNewCampaign({
                   </span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, padding: "8px 12px" }}>
-                  <button onClick={() => { const sp = evenSplit(stages.length); const n: Record<string, string> = {}; stages.forEach((st, i) => { n[st.id] = String(sp[i]); }); setStageAlloc(n); }}
+                  <button onClick={() => splitAroundLocked(evenSplit)}
                     style={{ minHeight: 34, padding: "7px 12px", borderRadius: 40, border: "1.25px solid rgba(0,0,0,0.09)", background: "transparent", display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#3d485c", fontFamily: "inherit", cursor: "pointer" }}>
                     <FigmaIcon name="split" />
                     Split evenly across stages
                   </button>
-                  <button onClick={() => { const sp = templateSplit(stages.length, maxPerRecipient); const n: Record<string, string> = {}; stages.forEach((st, i) => { n[st.id] = String(sp[i]); }); setStageAlloc(n); }}
+                  <button onClick={() => splitAroundLocked(n => templateSplit(n, maxPerRecipient))}
                     style={{ minHeight: 34, padding: "7px 12px", borderRadius: 40, border: "1.25px solid rgba(0,0,0,0.09)", background: "transparent", display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#3d485c", fontFamily: "inherit", cursor: "pointer" }}>
                     <FigmaIcon name="reset" />
                     Reset to template split, adjusted to the ${MIN_PER_STAGE_USD} minimum
@@ -2591,8 +2682,9 @@ export default function CreateNewCampaign({
                             <div style={{ fontSize: 12.2, color: "#69728a", lineHeight: "18.91px" }}>{RETURN_ORDINALS[i] || `Return ${i}`} · {st.name || `Stage ${i + 1}`} · {st.tasks.length} assigned task{st.tasks.length !== 1 ? "s" : ""}</div>
                           </div>
                           <div style={{ position: "relative" as const, width: 88, flexShrink: 0 }}>
-                            <input inputMode="decimal" aria-label={`${title} allocation percent`} value={stageAlloc[st.id] ?? ""}
-                              onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setStageAlloc(prev => ({ ...prev, [st.id]: v })); }}
+                            <input inputMode="decimal" aria-label={`${title} allocation percent`} value={stageAlloc[st.id] ?? ""} readOnly={isStageLocked(st.id)}
+                              title={isStageLocked(st.id) ? `Built by ${lockedStages?.[st.id]}` : undefined}
+                              onChange={e => { if (isStageLocked(st.id)) return; const v = e.target.value.replace(/[^0-9.]/g, ""); setStageAlloc(prev => ({ ...prev, [st.id]: v })); }}
                               style={{ width: "100%", height: 42.67, background: "#f4f1fc", border: err ? "1px solid #e4545b" : "1px solid rgba(28,37,51,0.15)", borderRadius: 40, padding: "0 27.83px 0 12.83px", textAlign: "right" as const, fontSize: 14, fontWeight: 600, color: err ? "#e4545b" : "#1c2533", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
                             <span style={{ position: "absolute" as const, right: 11.6, top: "50%", transform: "translateY(-50%)", fontSize: 13, fontWeight: 600, color: "#69728a", pointerEvents: "none" as const }}>%</span>
                           </div>
@@ -2629,27 +2721,46 @@ export default function CreateNewCampaign({
 
               {/* 5 · Payment summary */}
               <div style={{ ...sectionCard, border: "1px solid rgba(28,37,51,0.09)", padding: 21.83, display: "flex", flexDirection: "column", gap: 15.8 }}>
-                {sectionHead(5, "Payment Summary", "One combined payment, never split into separate charges")}
+                {sectionHead(5, "Payment Summary", coHosting ? `Co-hosted with ${coHosting.partnerName}: each studio pays for its own stages and an equal part of the opening fee` : "One combined payment, never split into separate charges")}
                 <style>{"@keyframes nx-spin { to { transform: rotate(360deg); } }"}</style>
                 <div style={{ paddingTop: 18 }}>
-                  {[
+                  {(coHosting ? [
+                    { k: "Campaign Reward Budget (both studios)", v: fmtToken(budgetNum), bold: false },
+                    { k: `Your stages (${round1(100 - partnerPct)}%)`, v: fmtToken(hostBudget), bold: false },
+                    { k: `${coHosting.partnerName}'s stages (${partnerPct}%) · paid by ${coHosting.partnerName}`, v: fmtToken(partnerBudget), bold: false },
+                    { k: feeSplit === 2 ? "Your half of the Campaign Opening Fee" : "Campaign Opening Fee · split equally once they accept", v: yourOpeningFee !== null ? fmtToken(yourOpeningFee) : `$${OPENING_FEE_USD}`, bold: false },
+                    { k: "Your payment due", v: yourPaymentDue !== null ? fmtToken(yourPaymentDue) + usdHint(yourPaymentDue) : "—", bold: true },
+                  ] : [
                     { k: "Campaign Reward Budget", v: fmtToken(budgetNum), bold: false },
                     { k: "Campaign Opening Fee", v: openingFeeTokens !== null ? (isStableToken ? fmtUSD(OPENING_FEE_USD) : `${fmtToken(openingFeeTokens)} ($${OPENING_FEE_USD})`) : `$${OPENING_FEE_USD}`, bold: false },
                     { k: "Total Payment Due", v: totalPaymentDue !== null ? fmtToken(totalPaymentDue) + usdHint(totalPaymentDue) : "—", bold: true },
-                  ].map((r, i) => (
-                    <div key={r.k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottom: i < 2 ? "1.25px solid rgba(28,37,51,0.09)" : "none" }}>
+                  ]).map((r, i, rows) => (
+                    <div key={r.k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottom: i < rows.length - 1 ? "1.25px solid rgba(28,37,51,0.09)" : "none" }}>
                       <span style={{ fontSize: 13.5, fontWeight: r.bold ? 700 : 400, color: "#3d485c", lineHeight: "20.925px" }}>{r.k}</span>
                       <span style={{ fontSize: 13.5, fontWeight: r.bold ? 700 : 400, color: "#1c2533", fontFamily: mono, lineHeight: "20.925px" }}>{r.v}</span>
                     </div>
                   ))}
                 </div>
+                {coHosting && (() => {
+                  const note = coHosting.status === "invited"
+                    ? { label: "Awaiting acceptance", cls: { background: "rgba(245,158,11,0.14)", color: "#c27c00" }, text: `Waiting for ${coHosting.partnerName} to accept. The opening fee is split equally once they do.` }
+                    : coHosting.status === "building"
+                      ? { label: "Awaiting their payment", cls: { background: "rgba(47,127,224,0.12)", color: "#2f7fe0" }, text: `${coHosting.partnerName} is building its stages. It pays ${fmtToken(partnerBudget)} for its stages and its half of the opening fee when it marks them ready.` }
+                      : { label: "Committed", cls: { background: "rgba(0,225,162,0.16)", color: "#00a87c" }, text: `${coHosting.partnerName} marked its stages ready and committed its share. The campaign can launch once you pay yours.` };
+                  return (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", borderRadius: 24, background: "#f7f4fe" }}>
+                      <span style={{ ...note.cls, borderRadius: 20, padding: "2.83px 9px", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" as const }}>{note.label}</span>
+                      <span style={{ fontSize: 13, color: "#3d485c", lineHeight: "20.15px" }}>{note.text}</span>
+                    </div>
+                  );
+                })()}
                 <div style={{ borderBottom: "0.833px solid rgba(28,37,51,0.09)", padding: "14px 6px 14px", display: "flex", flexWrap: "wrap" as const, alignItems: "center", justifyContent: "space-between", gap: 14 }}>
                   <div style={{ flex: "1 1 280px", minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#1c2533", lineHeight: "21.7px" }}>Campaign payment (opening fee + reward budget)</div>
-                    <div style={{ fontSize: 12.5, color: "#69728a", lineHeight: "19.375px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>Every allocation above is funded from this one transaction. Paying in <ChainLogo logo={TOKEN_LOGO[rewardToken]} size={14} /> {rewardToken} on <ChainLogo logo={activeNetworkInfo.logo} size={14} /> {activeNetworkInfo.name}.</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#1c2533", lineHeight: "21.7px" }}>{coHosting ? "Your payment (your stages + your part of the opening fee)" : "Campaign payment (opening fee + reward budget)"}</div>
+                    <div style={{ fontSize: 12.5, color: "#69728a", lineHeight: "19.375px" }}>Every allocation above is funded from this one transaction, paid in {rewardToken} on {activeNetworkInfo.name}.</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 14, flex: "0 0 auto", marginLeft: "auto" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "#1c2533", fontFamily: mono, lineHeight: "21.7px", whiteSpace: "nowrap" as const }}>{totalPaymentDue !== null ? fmtToken(totalPaymentDue) : "—"}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "#1c2533", fontFamily: mono, lineHeight: "21.7px", whiteSpace: "nowrap" as const }}>{yourPaymentDue !== null ? fmtToken(yourPaymentDue) : "—"}</span>
                     {isPaid ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2.83px 8.83px", borderRadius: 20, background: "rgba(0,225,162,0.16)", border: "1px solid rgba(63,217,184,0.3)" }}>
                         <span style={{ width: 7, height: 7, borderRadius: 3.5, background: "#00a87c" }} />
@@ -2670,7 +2781,7 @@ export default function CreateNewCampaign({
                           {payStatus === "awaiting"
                             ? <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 7, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", animation: "nx-spin 0.8s linear infinite", flexShrink: 0 }} />
                             : <FigmaIcon name="card" />}
-                          {payStatus === "awaiting" ? "Confirm in your wallet…" : !connectedAddress ? "Connect wallet to pay" : payStatus === "error" ? "Try payment again" : "Pay campaign total"}
+                          {payStatus === "awaiting" ? "Confirm in your wallet…" : !connectedAddress ? "Connect wallet to pay" : payStatus === "error" ? "Try payment again" : coHosting ? "Pay your share" : "Pay campaign total"}
                         </button>
                       </>
                     )}
@@ -2684,7 +2795,7 @@ export default function CreateNewCampaign({
                 )}
                 {!isPaid && payStatus === "awaiting" && (
                   <div role="status" style={{ fontSize: 12.5, color: "#6e2bd8", lineHeight: "18.75px", padding: "0 6px" }}>
-                    Approve the {totalPaymentDue !== null ? fmtToken(totalPaymentDue) : ""} transaction in your wallet on {activeNetworkInfo.name}. Keep this page open until it confirms.
+                    Approve the {yourPaymentDue !== null ? fmtToken(yourPaymentDue) : ""} transaction in your wallet on {activeNetworkInfo.name}. Keep this page open until it confirms.
                   </div>
                 )}
                 {!isPaid && payStatus === "error" && (
@@ -2698,14 +2809,14 @@ export default function CreateNewCampaign({
 
             {/* Back / Continue */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginTop: 34, flexWrap: "wrap" as const }}>
-              <button onClick={() => { setCurrentStep(3); scrollToTop(); }}
+              <button onClick={() => { setCurrentStep(STEP.journey); scrollToTop(); }}
                 style={{ width: 78, height: 34, borderRadius: 40, background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
                 <FigmaIcon name="arrowLeft" />
                 Back
               </button>
               <button disabled={!canContinueToReview}
                 title={canContinueToReview ? undefined : !rewardsValid ? "Fix the highlighted issues first" : "Pay the campaign total to continue"}
-                onClick={() => { if (canContinueToReview) { setCurrentStep(5); scrollToTop(); } }}
+                onClick={() => { if (canContinueToReview) { setCurrentStep(STEP.review); scrollToTop(); } }}
                 style={{ height: 34, borderRadius: 40, padding: "0 16px", background: "#8b3efe", opacity: canContinueToReview ? 1 : 0.45, border: "1px solid transparent", cursor: canContinueToReview ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "white", fontFamily: "inherit" }}>
                 Continue to review
                 <FigmaIcon name="arrowRightWhite" />
@@ -2716,7 +2827,7 @@ export default function CreateNewCampaign({
       })()}
 
       {/* ══════════ STEP 5 · REVIEW ══════════ */}
-      {currentStep === 5 && (() => {
+      {currentStep === STEP.review && (() => {
         const totalTasks = stages.reduce((n, st) => n + st.tasks.length, 0);
         const s0 = new Date(startDate); const e0 = new Date(endDate);
         const durationDays = !isNaN(s0.getTime()) && !isNaN(e0.getTime()) && e0 > s0 ? Math.round((e0.getTime() - s0.getTime()) / 86400000) : null;
@@ -2737,13 +2848,13 @@ export default function CreateNewCampaign({
         ];
         return (
           <div style={{ flex: 1, padding: "0 46px 56px 36px" }}>
-            <button onClick={() => goToStep(rewardsEnabled ? 4 : 3)} style={{ marginTop: 30, display: "flex", alignItems: "center", gap: 8, height: 34, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
+            <button onClick={() => goToStep(rewardsEnabled ? STEP.rewards : STEP.journey)} style={{ marginTop: 30, display: "flex", alignItems: "center", gap: 8, height: 34, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
               <FigmaIcon name="arrowLeft" />
               {rewardsEnabled ? "Back to rewards" : "Back to journey"}
             </button>
 
             <div style={{ marginTop: 20 }}>
-              <WizardProgress currentStep={5} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
+              <WizardProgress currentStep={STEP.review} onStepClick={jumpToStep} minStep={templateLocked ? 2 : 1} maxStep={furthestStep} />
             </div>
 
             {/* Heading */}
@@ -2827,7 +2938,7 @@ export default function CreateNewCampaign({
                                 </span>
                               )}
                               <button
-                                onClick={() => { setActiveStageId(st.id); setCurrentStep(3); scrollToTop(); }}
+                                onClick={() => { setActiveStageId(st.id); setCurrentStep(STEP.journey); scrollToTop(); }}
                                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(138,63,252,0.1)"; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = "#f7f4fe"; }}
                                 style={{ minHeight: 34, padding: "7.24px 11.83px 7.26px", borderRadius: 40, background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.15)", display: "flex", alignItems: "center", gap: 7.99, fontSize: 13, fontWeight: 600, color: "#1c2533", fontFamily: "inherit", cursor: "pointer" }}
@@ -2871,7 +2982,7 @@ export default function CreateNewCampaign({
 
             {/* Back / Publish */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginTop: 30, flexWrap: "wrap" as const }}>
-              <button onClick={() => { setCurrentStep(rewardsEnabled ? 4 : 3); scrollToTop(); }}
+              <button onClick={() => { setCurrentStep(rewardsEnabled ? STEP.rewards : STEP.journey); scrollToTop(); }}
                 style={{ width: 78, height: 34, borderRadius: 40, background: "#f7f4fe", border: "1px solid rgba(28,37,51,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "#1c2533", fontFamily: "inherit" }}>
                 <FigmaIcon name="arrowLeft" />
                 Back
@@ -3037,10 +3148,10 @@ export default function CreateNewCampaign({
       })()}
 
       {/* ══════════ FOOTER ══════════ */}
-      <div style={{ position: "sticky", bottom: 0, marginTop: "auto", background: "white", borderTop: "1px solid #E5E7EB", padding: "7px 46px 7px 36px", display: currentStep >= 3 ? "none" : "flex", justifyContent: "space-between", alignItems: "center", zIndex: 50 }}>
+      <div style={{ position: "sticky", bottom: 0, marginTop: "auto", background: "white", borderTop: "1px solid #E5E7EB", padding: "7px 46px 7px 36px", display: currentStep >= STEP.journey ? "none" : "flex", justifyContent: "space-between", alignItems: "center", zIndex: 50 }}>
 
         {/* STEP 1 FOOTER */}
-        {currentStep === 1 && (
+        {currentStep === STEP.template && (
           <>
             <button
               onClick={() => { window.location.href = NEXURA_MAIN_APP_URL; }}
@@ -3083,7 +3194,7 @@ export default function CreateNewCampaign({
         )}
 
         {/* STEP 2 FOOTER */}
-        {currentStep === 2 && (
+        {currentStep === STEP.details && (
           <>
             <button
               onMouseEnter={() => setBackHovered(true)}
@@ -3097,7 +3208,7 @@ export default function CreateNewCampaign({
             <button
               onMouseEnter={() => setContinueHovered(true)}
               onMouseLeave={() => setContinueHovered(false)}
-              onClick={() => setCurrentStep(3)}
+              onClick={() => setCurrentStep(STEP.journey)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                 background: continueHovered ? "#8b3efe" : "white",
@@ -3116,7 +3227,7 @@ export default function CreateNewCampaign({
         )}
 
         {/* STEP 3 FOOTER */}
-        {currentStep === 3 && (
+        {currentStep === STEP.journey && (
           <>
             <button
               onMouseEnter={() => setBackStep3Hovered(true)}
@@ -3130,7 +3241,7 @@ export default function CreateNewCampaign({
             <button
               onMouseEnter={() => { if (stages.length > 0) setContinueStep3Hovered(true); }}
               onMouseLeave={() => setContinueStep3Hovered(false)}
-              onClick={() => { if (stages.length > 0) setCurrentStep(4); }}
+              onClick={() => { if (stages.length > 0) setCurrentStep(STEP.rewards); }}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                 background: stages.length === 0 ? "#f7f4fe" : continueStep3Hovered ? "#8b3efe" : "white",

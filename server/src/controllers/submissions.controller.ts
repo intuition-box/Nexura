@@ -144,7 +144,7 @@ export const getSubmissionCampaigns = async (req: GlobalRequest, res: GlobalResp
     }
 
     const campaigns = await campaign.find({ ...scope.filter, status: PUBLISHED, deletedAt: null })
-      .select("title projectCoverImage starts_at ends_at status participants maxParticipants reward contractAddress")
+      .select("title projectCoverImage starts_at ends_at status participants maxParticipants reward contractAddress stages")
       .lean() as any[];
     const ids = campaigns.map(c => c._id);
 
@@ -154,12 +154,17 @@ export const getSubmissionCampaigns = async (req: GlobalRequest, res: GlobalResp
     const subs = await submission.find({ page: "campaign", miniQuestId: { $in: [...campaignByQuest.keys()] } })
       .select("miniQuestId status").lean() as any[];
     const pending = new Map<string, number>();
+    const approved = new Map<string, number>();
+    const rejected = new Map<string, number>();
     const total = new Map<string, number>();
+    const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
     for (const s of subs) {
       const cid = campaignByQuest.get(String(s.miniQuestId));
       if (!cid) continue;
-      total.set(cid, (total.get(cid) ?? 0) + 1);
-      if (s.status === "pending") pending.set(cid, (pending.get(cid) ?? 0) + 1);
+      bump(total, cid);
+      if (s.status === "pending") bump(pending, cid);
+      else if (s.status === "done") bump(approved, cid);
+      else if (s.status === "retry") bump(rejected, cid);
     }
 
     const joins = await campaignCompleted.aggregate([
@@ -183,7 +188,10 @@ export const getSubmissionCampaigns = async (req: GlobalRequest, res: GlobalResp
         participants: j?.joined ?? 0,
         completed: j?.completed ?? 0,
         claimed: j?.claimed ?? 0,
+        isRetention: (c.stages?.length ?? 0) > 1,
         pendingSubmissions: pending.get(id) ?? 0,
+        approvedSubmissions: approved.get(id) ?? 0,
+        rejectedSubmissions: rejected.get(id) ?? 0,
         totalSubmissions: total.get(id) ?? 0,
       };
     }).sort((a, b) => order[a.status] - order[b.status] || b.pendingSubmissions - a.pendingSubmissions);
@@ -221,7 +229,7 @@ export const getCampaignSubmissionDetails = async (req: GlobalRequest, res: Glob
       return;
     }
 
-    const quests = await campaignQuest.find({ campaign: id }).select("_id quest stage order points tag").lean() as any[];
+    const quests = await campaignQuest.find({ campaign: id }).select("_id quest stage order points tag taskTypeId").lean() as any[];
     const questIds = quests.map(q => q._id);
     const questById = new Map(quests.map(q => [String(q._id), q]));
     const stages = buildCampaignStages(c, quests);
@@ -307,6 +315,9 @@ export const getCampaignSubmissionDetails = async (req: GlobalRequest, res: Glob
         status: s.status,
         taskType: s.taskType,
         taskTitle: q?.quest ?? "",
+        taskTypeId: q?.taskTypeId ?? "",
+        reviewedAt: s.reviewedAt ?? (s.status === "pending" ? null : s.updatedAt),
+        reviewNote: s.reviewNote ?? "",
         username: s.username || u?.username || "",
         nexuraUsername: u?.username ?? "",
         address: s.address || u?.address || "",

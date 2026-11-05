@@ -9,6 +9,7 @@ import { IN_ANOTHER_STUDIO, inAnotherStudio } from "@/utils/hubAccounts";
 import { applyCampaignUpdate, prepareCampaignSaveBody } from "@/controllers/hub.controller";
 import { EMAIL_RE, validateDiscordTaskConfig } from "@/utils/utils";
 import { BAD_REQUEST, CONFLICT, CREATED, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_FOUND, OK } from "@/utils/status.utils";
+import { applyAcceptCoHost, applyLeaveCoHost, governanceErrorStatus, validateAcceptCoHost, validateLeaveCoHost } from "@/controllers/coHost.controller";
 
 /*
  * Admin Management governance, modelled on a Safe multisig.
@@ -256,11 +257,20 @@ async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any
       if (bodyError) throw new HttpError(BAD_REQUEST, bodyError);
       return { kind: "editCampaign", campaignId: id, campaignTitle: String(body.title ?? c.title ?? ""), changes: body };
     }
+    case "acceptCoHost":
+    case "leaveCoHost": {
+      try {
+        return raw.kind === "acceptCoHost" ? await validateAcceptCoHost(ctx.hubId, raw, pending) : await validateLeaveCoHost(ctx.hubId, raw, pending);
+      } catch (err: any) {
+        throw new HttpError(governanceErrorStatus(err), err?.message || "this change can't be proposed");
+      }
+    }
     default:
       throw new HttpError(BAD_REQUEST, "this kind of change isn't supported by the server yet; it needs the latest server update");
   }
 }
 
+// ─── Co-host launch fee ──────────────────────────────────────────────────────
 // ─── Tally + execution ───────────────────────────────────────────────────────
 function tally(ctx: Ctx, proposal: any) {
   const latest = new Map<string, "approve" | "reject">();
@@ -371,6 +381,14 @@ async function runAction(ctx: Ctx, action: any, proposalRef: string): Promise<{ 
       const changes = { ...action.changes };
       await applyCampaignUpdate(action.campaignId, hubFound, changes, Array.isArray(changes.campaignQuests) ? changes.campaignQuests : null);
       return; // the governance record itself doesn't change
+    }
+    case "acceptCoHost": {
+      await applyAcceptCoHost(ctx.hubId, action, proposalRef);
+      return;
+    }
+    case "leaveCoHost": {
+      await applyLeaveCoHost(ctx.hubId, action);
+      return;
     }
     default:
       throw new Error("unknown action");
