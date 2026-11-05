@@ -8,6 +8,7 @@ import { createHubInvite, InviteError } from '@/utils/hubInvite';
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, CREATED, OK, NO_CONTENT, NOT_FOUND, FORBIDDEN } from '@/utils/status.utils';
 import { CLIENT_URL, STUDIO_PAYMENTS_ENABLED } from '@/utils/env.utils';
 import { launchFeeProblem } from '@/controllers/studioPayment.controller';
+import { minLaunchFeeShare } from '@/controllers/coHost.controller';
 import { generateOTP, validateHubData, getMissingFields, validateCampaignData, validateCampaignQuestData, validateSaveCampaignData, validateUserHubData, validateDiscordTaskConfig } from '@/utils/utils';
 import logger from '@/config/logger';
 import { submission } from '@/models/submission.model';
@@ -27,6 +28,8 @@ import { hubNotification } from "@/models/hubNotification.model";
 const OWNER_ONLY_SOCIALS = "only the studio Owner can connect or disconnect its X, Discord and Telegram";
 import { campaignRewardAsset, rewardAsset } from "@/utils/rewardAssets";
 import { normalizeCampaignDateInput, normalizeCampaignDatesForResponse, parseDate } from "@/utils/dates";
+import { mergeStages, partnerStageKeys, rewardSettingsChanged, type Stage } from "@/utils/coHosts";
+import { lapseStaleCoHosts } from "@/controllers/coHost.controller";
 
 const DISCORD_CAMPAIGN_TAGS = new Set([
   "discord",
@@ -205,7 +208,7 @@ export const savePaymentHash = async (req: GlobalRequest, res: GlobalResponse) =
   try {
     const { txHash } = req.body;
     if (txHash && STUDIO_PAYMENTS_ENABLED) {
-      const problem = await launchFeeProblem(txHash);
+      const problem = await launchFeeProblem(txHash, minLaunchFeeShare());
       if (problem) {
         res.status(BAD_REQUEST).json({ error: problem });
         return;
@@ -642,7 +645,7 @@ class SubmissionDecisionError extends Error {
 }
 
 /** Approves or rejects one submission and its task completion. Throws SubmissionDecisionError with the response status. */
-async function applySubmissionDecision(submissionId: string, action: "accept" | "reject", adminName: string) {
+async function applySubmissionDecision(submissionId: string, action: "accept" | "reject", adminName: string, note = "") {
   const userSubmission = await submission.findById(submissionId);
   if (!userSubmission) throw new SubmissionDecisionError(BAD_REQUEST, "submission not found");
 
@@ -676,6 +679,8 @@ async function applySubmissionDecision(submissionId: string, action: "accept" | 
     userSubmission.rejectedCount = (userSubmission.rejectedCount || 0) + 1;
     model.status = "retry";
   }
+  userSubmission.reviewedAt = new Date();
+  userSubmission.reviewNote = action === "reject" ? String(note ?? "").trim().slice(0, 500) : "";
 
   await userSubmission.save();
   await model.save();
@@ -688,7 +693,7 @@ async function applySubmissionDecision(submissionId: string, action: "accept" | 
 
 export const validateCampaignSubmissions = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const { submissionId, action }: { submissionId: string; action: "reject" | "accept" } = req.body;
+    const { submissionId, action, note }: { submissionId: string; action: "reject" | "accept"; note?: string } = req.body;
     if (action !== "accept" && action !== "reject") {
       res.status(BAD_REQUEST).json({ error: "action must be accept or reject" });
       return;
@@ -698,7 +703,7 @@ export const validateCampaignSubmissions = async (req: GlobalRequest, res: Globa
       res.status(NOT_FOUND).json({ error: "submission not found in your hub" });
       return;
     }
-    await applySubmissionDecision(submissionId, action, req.adminName ?? "Admin");
+    await applySubmissionDecision(submissionId, action, req.adminName ?? "Admin", typeof note === "string" ? note : "");
     res.status(NO_CONTENT).send();
   } catch (error) {
     if (error instanceof SubmissionDecisionError) {
@@ -922,10 +927,28 @@ export class CampaignUpdateError extends Error {
  * Throws CampaignUpdateError when the change isn't allowed.
  */
 export async function applyCampaignUpdate(id: string, hubFound: any, body: Record<string, any>, questsToSave: any[] | null) {
+  await lapseStaleCoHosts(id);
   const campaignFound = await campaign.findById(id).lean();
   if (!campaignFound) {
     throw new CampaignUpdateError(NOT_FOUND, "campaign not found");
   }
+  // The host's save only changes the host's stages and tasks; a co-host's stay as it built them
+  const storedStages = ((campaignFound as any).stages ?? []) as Stage[];
+  const coHosts = ((campaignFound as any).coHosts ?? []) as any[];
+  const coHostReady = coHosts.some(c => c.status === "accepted" && c.ready);
+  if (coHostReady && rewardSettingsChanged(
+    { rewardsConfig: (campaignFound as any).rewardsConfig, stages: storedStages },
+    { rewardsConfig: body.rewardsConfig, stages: Array.isArray(body.stages) ? body.stages : null },
+  )) {
+    throw new CampaignUpdateError(FORBIDDEN, "your co-host marked its stages ready, so the reward settings are locked");
+  }
+  if (Array.isArray(body.stages)) {
+    body.stages = mergeStages({
+      stored: storedStages, incoming: body.stages, saver: "",
+      coHostOrder: coHosts.map(c => String(c.hub)), hostSetsAllocation: !coHostReady,
+    });
+  }
+  const partnerKeys = partnerStageKeys(storedStages, "");
 
   const lockedDiscordGuildId = campaignFound.status !== "Save"
     ? await resolveCampaignDiscordLaunchGuildId(campaignFound)
@@ -1044,10 +1067,21 @@ export async function applyCampaignUpdate(id: string, hubFound: any, body: Recor
 
   await campaign.findByIdAndUpdate(id, updateFields, { new: true });
 
-  // Update quests without destroying existing IDs/submissions
-  if (questsToSave !== null) {
-    const existingQuests = await campaignQuest.find({ campaign: id }).select("_id").lean();
-    const existingQuestIds = existingQuests.map((q: any) => q._id.toString());
+  if (questsToSave !== null) await syncCampaignQuests(id, questsToSave, discordGuildIdForCampaign, partnerKeys);
+  // The fixed XP follows the campaign's stages (also covers approved edit proposals)
+  await syncCampaignXp(id);
+}
+
+/**
+ * Saves a campaign's tasks without destroying existing ids or submissions. Tasks in `partnerKeys`
+ * stages belong to another partner: they're never inserted, updated or deleted by this save.
+ */
+export async function syncCampaignQuests(id: string, incoming: any[], discordGuildIdForCampaign: string, partnerKeys: Set<string>) {
+  {
+    const existingQuests = await campaignQuest.find({ campaign: id }).select("_id stage").lean() as any[];
+    const partnerQuestIds = new Set(existingQuests.filter(q => partnerKeys.has(String(q.stage ?? ""))).map(q => String(q._id)));
+    const questsToSave = incoming.filter((q: any) => !partnerKeys.has(String(q?.stage ?? "")) && !(q?._id && partnerQuestIds.has(String(q._id))));
+    const existingQuestIds = existingQuests.map((q: any) => q._id.toString()).filter(qid => !partnerQuestIds.has(qid));
     const incomingQuestIds = questsToSave
       .map((q: any) => q._id?.toString())
       .filter(Boolean);
@@ -1109,10 +1143,8 @@ export async function applyCampaignUpdate(id: string, hubFound: any, body: Recor
       await campaignQuest.deleteMany({ _id: { $in: questIdsToDelete }, campaign: id });
     }
 
-    await campaign.findByIdAndUpdate(id, { noOfQuests: questsToSave.length });
+    await campaign.findByIdAndUpdate(id, { noOfQuests: await campaignQuest.countDocuments({ campaign: id }) });
   }
-  // The fixed XP follows the campaign's stages (also covers approved edit proposals)
-  await syncCampaignXp(id);
 }
 
 export const saveCampaign = async (req: GlobalRequest, res: GlobalResponse) => {

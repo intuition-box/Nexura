@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import AnimatedBackground from "@/components/AnimatedBackground";
+import StudioUpgradeNotice from "@/components/studio/StudioUpgradeNotice";
+import { isStudioLive, isStudioPath } from "@/lib/studioAvailability";
 
 export default function StudioGroupLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
@@ -29,6 +31,8 @@ export default function StudioGroupLayout({ children }: { children: React.ReactN
       document.body.classList.remove("studio-theme");
     };
   }, [pathname]);
+
+  if (isStudioPath(pathname) && !isStudioLive()) return <StudioUpgradeNotice />;
 
   return (
     <div className="flex h-screen w-full text-white selection:bg-blue-500/30 relative">

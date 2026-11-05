@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { adminDevAccess } from "@/controllers/devAccess.controller";
+import { listCoHostRefunds, markCoHostRefunded } from "@/controllers/coHost.controller";
 import {
   checkPlatformProposal, createPlatformProposal, executePlatformProposal, getPlatformGovernance, getPlatformMe, getPlatformTeam, platformUsernameAvailable, changePlatformUsername,
   markPlatformNotificationsRead, useGovernanceInstead, voteOnPlatformProposal,
@@ -185,6 +186,8 @@ router
   .get("/get-banned-users", getBannedUsers)
   .get("/get-xp-history", getXpHistory)
   .get("/get-admins", getAdmins)
+  .get("/co-host-refunds", listCoHostRefunds)
+  .post("/co-host-refunds/mark", requireAdminSuperadmin, markCoHostRefunded)
   .get("/dev-access", adminDevAccess("list"))
   .post("/dev-access/add", adminDevAccess("add"))
   .post("/dev-access/remove", adminDevAccess("remove"))

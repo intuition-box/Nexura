@@ -137,6 +137,8 @@ const campaignSchema = new Schema({
 		order: { type: Number, default: 0 },
 		returnDays: { type: Number, default: 0 },
 		allocationPct: { type: Number, default: null },
+		// "" for the host's stages; a co-host's studio id for the stages it builds
+		owner: { type: String, default: "" },
 	}],
 	rewardsEnabled: {
 		type: Boolean,
@@ -179,6 +181,31 @@ const campaignSchema = new Schema({
 		executedAt: { type: Date },
 		endsAt: { type: String },
 	},
+	// Partner studios hosting this campaign with the owning hub (see utils/coHosts.ts)
+	coHosts: [{
+		_id: false,
+		hub: { type: Schema.Types.ObjectId, ref: "hubs", required: true },
+		status: { type: String, enum: ["invited", "accepted", "declined", "lapsed"], default: "invited" },
+		invitedBy: { type: String, default: "" },
+		invitedAt: { type: Date, required: true },
+		respondedAt: { type: Date, default: null },
+		proposalRef: { type: String, default: null },
+		// Stages this partner built (mirrors stages[].owner)
+		stageKeys: { type: [String], default: [] },
+		// Marked ready by the co-host: its stages and the reward settings are then locked
+		ready: { type: Boolean, default: false },
+		readyAt: { type: Date, default: null },
+		// Its share of the reward budget (the allocation of its stages), in the reward token's smallest unit
+		rewardShareWei: { type: String, default: "0" },
+		// Its share of the launch fee, in the fee token's smallest unit
+		feeShareWei: { type: String, default: "0" },
+		feeTxHash: { type: String, default: null },
+		// Held until the campaign launches with every partner paid; refunded if it doesn't (see utils/coHosts.ts)
+		feeStatus: { type: String, enum: ["none", "held", "settled", "refundDue", "refunded"], default: "none" },
+		refundTxHash: { type: String, default: null },
+		refundedAt: { type: Date, default: null },
+		refundedBy: { type: String, default: "" },
+	}],
 	// Wallet signature of the admin who published the campaign
 	publishSignature: {
 		address: { type: String },

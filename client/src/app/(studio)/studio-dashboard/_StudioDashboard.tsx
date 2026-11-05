@@ -199,7 +199,7 @@ const fetchBannedUsers = async () => {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="hidden md:block">
+          <div className="hidden md:block bg-[#f7f5ff]">
             <StudioHeader
               title={
                 activeTab === "hubProfile" ? "Project Profile"
@@ -219,17 +219,7 @@ const fetchBannedUsers = async () => {
               {activeTab === "campaignsTab" && <CampaignsTab />}
 
               {activeTab === "campaignSubmissions" && (
-                <SubmissionsHub
-                  refreshKey={submissionsRefresh}
-                  loading={loading}
-                  searchTerm={searchTerm}
-                  setSearchTerm={setSearchTerm}
-                  selectedUsers={selectedUsers}
-                  viewedSubmissions={viewedSubmissions}
-                  toggleUserSelection={toggleUserSelection}
-                  onOpenSubmission={openSubmission}
-                  handleAction={handleAction}
-                />
+                <SubmissionsHub refreshKey={submissionsRefresh} />
               )}
 
               {activeTab === "adminManagement" && <AdminManagement />}

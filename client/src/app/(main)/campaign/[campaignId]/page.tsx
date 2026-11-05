@@ -124,6 +124,7 @@ export default function CampaignEnvironment() {
   const [projectName, setProjectName] = useState("");
   const [projectImage, setProjectImage] = useState("");
   const [hubInfo, setHubInfo] = useState<HubInfo | null>(null);
+  const [coHostNames, setCoHostNames] = useState<string[]>([]);
   const [showHubModal, setShowHubModal] = useState(false);
   const [campaignNumber, setCampaignNumber] = useState("000");
   const [reward, setReward] = useState<{ trustTokens?: number; trust?: number; xp: number; pool?: number }>({ trustTokens: 0, xp: 0 });
@@ -195,6 +196,7 @@ export default function CampaignEnvironment() {
         discordServer: "",
       };
       setHubInfo(nextHubInfo);
+      setCoHostNames(Array.isArray(res.coHosts) ? res.coHosts.map((c: { name?: string }) => String(c?.name ?? "")).filter(Boolean) : []);
       setProjectName(nextHubInfo.name || res.project_name || "");
       setProjectImage(nextHubInfo.logo || res.project_image || "");
       setCampaignNumber(res.campaignNumber || "000");
@@ -609,7 +611,7 @@ export default function CampaignEnvironment() {
 
             <div className="p-5 md:p-6 flex flex-col justify-between">
               <div>
-                <p className="text-xs opacity-50 uppercase mb-1">{projectName}</p>
+                <p className="text-xs opacity-50 uppercase mb-1">{[projectName, ...coHostNames].filter(Boolean).join(" × ")}</p>
                 <p className="text-lg md:text-xl font-bold leading-tight">
                   {title || description || subTitle || `Campaign ${campaignNumber}`}
                 </p>

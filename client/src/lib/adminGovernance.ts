@@ -190,7 +190,11 @@ export type ProposalAction =
   /** Ends a live campaign `noticeDays` (7) after the proposal is approved; it never ends immediately. */
   | { kind: "endCampaign"; campaignId: string; campaignTitle?: string; noticeDays?: number }
   /** Changes to a published campaign; applied only once the signers approve. `changes` holds the builder's save fields. */
-  | { kind: "editCampaign"; campaignId: string; campaignTitle?: string; changes: Record<string, unknown> };
+  | { kind: "editCampaign"; campaignId: string; campaignTitle?: string; changes: Record<string, unknown> }
+  /** Accepts another studio's invitation to co-host its campaign. */
+  | { kind: "acceptCoHost"; campaignId: string; campaignTitle?: string; hostName?: string }
+  /** Leaves a draft this studio accepted to co-host. */
+  | { kind: "leaveCoHost"; campaignId: string; campaignTitle?: string; hostName?: string };
 
 /** Wallet signature proving a signer proposed / voted (Safe-style). */
 export type ProposalSignature = { address: string; signature: string; message: string; signedAt: string };

@@ -43,6 +43,7 @@ import { payCompletedStageXp } from "@/utils/campaignXp";
 import { checkTrustEligibility } from "@/utils/campaignRewards";
 import { campaignRewardAsset } from "@/utils/rewardAssets";
 import { resolveAdminCampaignHub } from "@/utils/adminCampaignHub";
+import { publicCoHostsByCampaign } from "@/controllers/campaign.controller";
 
 // Image fields may hold empty strings or the literal "pending" (draft
 // placeholder). Both must read as "no image" so the UI falls back gracefully
@@ -522,9 +523,11 @@ export const fetchCampaignQuests = async (req: GlobalRequest, res: GlobalRespons
 
 		// The person's own progress towards the TRUST reward (also grants it the moment they qualify)
 		const rewardEligibility = completedCampaign && userId ? await checkTrustEligibility(userId, id) : null;
+		const coHosts = (await publicCoHostsByCampaign([currentCampaign])).get(String(currentCampaign._id)) ?? [];
 
 		res.status(OK).json({
 			message: "quests fetched!",
+			coHosts,
 			rewardEligibility,
 			// What the reward pool pays in (TRUST, USDC, …), so the app can name it
 			rewardAsset: campaignRewardAsset(currentCampaign),
