@@ -1,8 +1,10 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import logger from "@/config/logger";
 
 const PREFIX = "enc:v1:";
 const rawKey = process.env.ENCRYPTION_KEY?.trim();
 const key = rawKey ? createHash("sha256").update(rawKey).digest() : null;
+if (!key) logger.warn("ENCRYPTION_KEY isn't set: 2FA secrets are stored unencrypted");
 
 export function seal(plain: string): string {
   if (!key || typeof plain !== "string" || plain.startsWith(PREFIX)) return plain;

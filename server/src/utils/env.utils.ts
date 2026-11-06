@@ -17,6 +17,8 @@ export const PROXY_FEE_CONTRACT = (process.env.PROXY_FEE_CONTRACT?.trim()
   || (network === "mainnet" ? "0x2e753a81720e9F47f3b11E1f854D3B44D81280CD" : "")) as string;
 export const JWT_SECRET = process.env.JWT_SECRET as string;
 export const REFRESH_SECRET = process.env.REFRESH_SECRET as string;
+export const DEV_ACCESS_SECRET = process.env.DEV_ACCESS_SECRET?.trim() ?? "";
+export const DEV_ACCESS_SYNC_KEY = process.env.DEV_ACCESS_SYNC_KEY?.trim() ?? "";
 export const DISCORD_ADMIN_HUB_CLIENT_REDIRECT_URI = process.env.DISCORD_ADMIN_HUB_CLIENT_REDIRECT_URI as string;
 export const DISCORD_ADMIN_HUB_REDIRECT_URI = process.env.DISCORD_ADMIN_HUB_REDIRECT_URI as string;
 
