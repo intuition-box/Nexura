@@ -1,9 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { createHmac } from "crypto";
 import axios from "axios";
 import logger from "@/config/logger";
-import { JWT_SECRET } from "@/utils/env.utils";
+import { DEV_ACCESS_SECRET, DEV_ACCESS_SYNC_KEY } from "@/utils/env.utils";
 import { JWT } from "@/utils/utils";
 import { FORBIDDEN } from "@/utils/status.utils";
 import { admin } from "@/models/admin.model";
@@ -19,9 +18,11 @@ export const isGatedHost = (req: Request) =>
 export const holdsList = (req: Request) => !isGatedHost(req);
 export const DEV_ACCESS_HEADER = "x-dev-access";
 export const DEV_ACCESS_SYNC_HEADER = "x-dev-access-key";
-// Set DEV_ACCESS_SYNC_KEY to the same value on api and staging-api. Without it, each server derives the
-// key from its JWT_SECRET, which matches as long as both servers share that secret.
-export const DEV_ACCESS_SYNC_KEY = String(process.env.DEV_ACCESS_SYNC_KEY || createHmac("sha256", JWT_SECRET).update("nexura-dev-access-sync").digest("hex"));
+// DEV_ACCESS_SYNC_KEY must be the same on api and staging-api; DEV_ACCESS_SECRET signs test app passes.
+export { DEV_ACCESS_SYNC_KEY };
+for (const [name, value] of [["DEV_ACCESS_SECRET", DEV_ACCESS_SECRET], ["DEV_ACCESS_SYNC_KEY", DEV_ACCESS_SYNC_KEY]] as const) {
+  if (!value) logger.warn(`${name} isn't set: the test app whitelist is closed on this server`);
+}
 const DEV_ACCESS_PURPOSE = "dev-access";
 const LIST_URL = String(process.env.DEV_ACCESS_LIST_URL ?? MAIN_API_URL).replace(/\/+$/, "");
 
@@ -38,7 +39,12 @@ export async function isWhitelisted(address: string): Promise<boolean> {
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.allowed;
   let allowed = false;
   try {
-    const res = await axios.get(`${LIST_URL}/api/dev-access/allowed`, { params: { address: addr }, timeout: 8_000 });
+    if (!DEV_ACCESS_SYNC_KEY) return false;
+    const res = await axios.get(`${LIST_URL}/api/dev-access/allowed`, {
+      params: { address: addr },
+      headers: { [DEV_ACCESS_SYNC_HEADER]: DEV_ACCESS_SYNC_KEY },
+      timeout: 8_000,
+    });
     allowed = !!res.data?.allowed;
   } catch (error) {
     logger.error(error);
@@ -71,8 +77,10 @@ export async function forwardToList<T>(action: string, body: Record<string, unkn
 }
 
 /** "Keep me signed in for 7 days" gives a 7-day pass; otherwise it lasts a day. */
-export const signDevAccessToken = (address: string, remember = true) =>
-  jwt.sign({ purpose: DEV_ACCESS_PURPOSE, address: address.toLowerCase() }, JWT_SECRET, { expiresIn: remember ? "7d" : "1d" });
+export const signDevAccessToken = (address: string, remember = true) => {
+  if (!DEV_ACCESS_SECRET) throw new ListError("DEV_ACCESS_SECRET isn't set on this server, so it can't issue test app passes.", 503);
+  return jwt.sign({ purpose: DEV_ACCESS_PURPOSE, address: address.toLowerCase() }, DEV_ACCESS_SECRET, { expiresIn: remember ? "7d" : "1d" });
+};
 
 // Records when each wallet last used the test app, at most once per SEEN_EVERY_MS
 const SEEN_EVERY_MS = 5 * 60 * 1000;
@@ -89,9 +97,9 @@ function noteSeen(req: Request, address: string) {
 
 export async function readDevAccess(req: Request): Promise<string | null> {
   const token = req.header(DEV_ACCESS_HEADER);
-  if (!token) return null;
+  if (!token || !DEV_ACCESS_SECRET) return null;
   try {
-    const claims = jwt.verify(token, JWT_SECRET) as { purpose?: string; address?: string };
+    const claims = jwt.verify(token, DEV_ACCESS_SECRET) as { purpose?: string; address?: string };
     if (claims.purpose !== DEV_ACCESS_PURPOSE || !claims.address) return null;
     if (!(await isWhitelisted(claims.address))) return null;
     noteSeen(req, claims.address);
