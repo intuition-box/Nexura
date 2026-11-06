@@ -1,7 +1,6 @@
-import { createHmac, timingSafeEqual } from "crypto";
-import { verifyMessage, isAddress } from "ethers";
+import { timingSafeEqual } from "crypto";
+import { isAddress } from "ethers";
 import logger from "@/config/logger";
-import { JWT_SECRET } from "@/utils/env.utils";
 import { devAccess } from "@/models/devAccess.model";
 import { admin } from "@/models/admin.model";
 import { BAD_REQUEST, CONFLICT, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_FOUND, OK, UNAUTHORIZED } from "@/utils/status.utils";
@@ -13,10 +12,6 @@ import { canManageTestApp } from "@/controllers/platformGovernance.controller";
 import { platformGovernance } from "@/models/platformGovernance.model";
 import { cleanUsagePing, clearUsage, recordUsage, usageDetail, weekMinutesByAddress } from "@/utils/devAccessUsage.utils";
 
-const CHALLENGE_TTL_MS = 10 * 60 * 1000;
-const proof = (address: string, issued: string) => createHmac("sha256", JWT_SECRET).update(`dev-access:${address}:${issued}`).digest("hex").slice(0, 24);
-const challengeText = (address: string, issued: string) =>
-  `Sign in to the Nexura test app\n\nWallet: ${address}\nIssued: ${issued}\nCode: ${proof(address, issued)}`;
 const sameKey = (a: string, b: string) => {
   const [left, right] = [Buffer.from(a), Buffer.from(b)];
   return left.length > 0 && left.length === right.length && timingSafeEqual(left, right);
@@ -26,47 +21,6 @@ export const devAccessStatus = async (req: GlobalRequest, res: GlobalResponse) =
   const enabled = isGatedHost(req);
   const address = enabled ? await readDevAccess(req) : null;
   res.status(OK).json({ enabled, access: address ? { address } : null });
-};
-
-export const devAccessChallenge = async (req: GlobalRequest, res: GlobalResponse) => {
-  const address = String(req.query.address ?? "").trim().toLowerCase();
-  if (!isAddress(address)) {
-    res.status(BAD_REQUEST).json({ error: "send a valid wallet address" });
-    return;
-  }
-  res.status(OK).json({ message: challengeText(address, new Date().toISOString()) });
-};
-
-export const devAccessVerify = async (req: GlobalRequest, res: GlobalResponse) => {
-  try {
-    const { message, signature } = req.body as { message?: string; signature?: string };
-    const match = String(message ?? "").match(/^Sign in to the Nexura test app\n\nWallet: (0x[0-9a-f]{40})\nIssued: (\S+)\nCode: ([0-9a-f]{24})$/);
-    if (!match || !signature) {
-      res.status(BAD_REQUEST).json({ error: "send the signed message and signature" });
-      return;
-    }
-    const [address, issued, code] = [match[1]!, match[2]!, match[3]!];
-    const age = Date.now() - new Date(issued).getTime();
-    if (!(age >= 0 && age < CHALLENGE_TTL_MS) || !sameKey(proof(address, issued), code)) {
-      res.status(BAD_REQUEST).json({ error: "this sign-in request expired, try again" });
-      return;
-    }
-    let signer = "";
-    try { signer = verifyMessage(String(message), String(signature)).toLowerCase(); } catch { /* bad signature */ }
-    if (signer !== address) {
-      res.status(UNAUTHORIZED).json({ error: "the signature doesn't match this wallet" });
-      return;
-    }
-    clearDevAccessCache(address);
-    if (!(await isWhitelisted(address))) {
-      res.status(FORBIDDEN).json({ error: "this wallet isn't on the test app whitelist" });
-      return;
-    }
-    res.status(OK).json({ token: signDevAccessToken(address, req.body?.remember !== false), access: { address } });
-  } catch (error) {
-    logger.error(error);
-    res.status(INTERNAL_SERVER_ERROR).json({ error: "sign-in failed" });
-  }
 };
 
 /**
@@ -87,20 +41,13 @@ export const devAccessVerifySession = async (req: GlobalRequest, res: GlobalResp
     }
     res.status(OK).json({ token: signDevAccessToken(address, req.body?.remember !== false), access: { address } });
   } catch (error) {
+    if (error instanceof ListError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
     logger.error(error);
     res.status(INTERNAL_SERVER_ERROR).json({ error: "sign-in failed" });
   }
-};
-
-/** GET /dev-access/check?address=: whether a wallet is on the whitelist, before it signs (asks the main API). */
-export const devAccessCheck = async (req: GlobalRequest, res: GlobalResponse) => {
-  const address = String(req.query.address ?? "").trim().toLowerCase();
-  if (!isAddress(address)) {
-    res.status(BAD_REQUEST).json({ error: "send a valid wallet address" });
-    return;
-  }
-  clearDevAccessCache(address);
-  res.status(OK).json({ allowed: await isWhitelisted(address) });
 };
 
 // Drops floods from one pass; the list holder separately makes sure a minute is only counted once
@@ -131,7 +78,12 @@ export const devAccessUsagePing = async (req: GlobalRequest, res: GlobalResponse
   }
 };
 
+/** GET /dev-access/allowed?address=: the gated server asking the list holder, signed with DEV_ACCESS_SYNC_KEY. */
 export const devAccessAllowed = async (req: GlobalRequest, res: GlobalResponse) => {
+  if (!holdsList(req) || !sameKey(String(req.header(DEV_ACCESS_SYNC_HEADER) ?? ""), DEV_ACCESS_SYNC_KEY)) {
+    res.status(FORBIDDEN).json({ error: "the test app server's DEV_ACCESS_SYNC_KEY doesn't match the main API's" });
+    return;
+  }
   try {
     res.status(OK).json({ allowed: await isWhitelistedLocally(String(req.query.address ?? "")) });
   } catch (error) {

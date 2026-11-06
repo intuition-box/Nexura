@@ -26,9 +26,6 @@ import { MAX_USERNAME_CHANGES } from "@/controllers/hub.controller";
  * Team changes have no other way in: the direct add/remove/role routes are closed.
  */
 
-// The first Owner of the admin dashboard (PLATFORM_OWNER_EMAIL overrides it). Applied once; ownership can be transferred after.
-const DEFAULT_OWNER_EMAIL = "onlyrchris@gmail.com";
-
 const KIND_TO_VERB = { propose: "Propose", approve: "Approve", reject: "Reject", execute: "Execute" } as const;
 type SignatureKind = keyof typeof KIND_TO_VERB;
 type Role = "owner" | "superadmin" | "admin";
@@ -51,7 +48,7 @@ async function loadContext() {
   // transferred afterwards); otherwise it's the owner of the official Nexura hub when that's a
   // platform admin, else the longest-serving Super Admin.
   const present = (id: unknown) => !!id && admins.some(a => String(a._id) === String(id));
-  const seedEmail = String(process.env.PLATFORM_OWNER_EMAIL || DEFAULT_OWNER_EMAIL).trim().toLowerCase();
+  const seedEmail = String(process.env.PLATFORM_OWNER_EMAIL ?? "").trim().toLowerCase();
   const seeded = seedEmail && admins.find(a => String(a.email ?? "").toLowerCase() === seedEmail);
   if (seeded && gov.ownerSeedEmail !== seedEmail) {
     gov.ownerId = seeded._id;
