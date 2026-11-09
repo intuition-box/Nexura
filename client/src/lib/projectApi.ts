@@ -189,7 +189,7 @@ export class ApiError extends Error {
 /** Fired after every successful Studio change, so open pages reload their data right away. */
 export const STUDIO_DATA_EVENT = "nexura-studio-data-changed";
 // Saves that don't change what other pages show (builder autosave, marking notifications read)
-const SILENT_CHANGES = ["/hub/save-campaign", "/hub/upload-campaign-cover", "/hub/governance/notifications/read"];
+const SILENT_CHANGES = ["/hub/save-campaign", "/hub/upload-campaign-cover", "/hub/governance/notifications/read", "/hub/feedback"];
 
 export const projectApiRequest = async <T = unknown>({
   method,

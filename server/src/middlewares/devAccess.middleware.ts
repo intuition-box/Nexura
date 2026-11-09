@@ -59,20 +59,23 @@ export class ListError extends Error {
 }
 
 // Runs a whitelist action on the main API from the gated server.
-export async function forwardToList<T>(action: string, body: Record<string, unknown>): Promise<T> {
-  if (!DEV_ACCESS_SYNC_KEY) throw new ListError("DEV_ACCESS_SYNC_KEY isn't set on this server, so it can't reach the shared whitelist.", 503);
+export const forwardToList = <T>(action: string, body: Record<string, unknown>) => forwardToMain<T>(`/api/dev-access/sync/${action}`, body);
+
+// Sends a request to the main API from the gated server, signed with DEV_ACCESS_SYNC_KEY.
+export async function forwardToMain<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  if (!DEV_ACCESS_SYNC_KEY) throw new ListError("DEV_ACCESS_SYNC_KEY isn't set on this server, so it can't reach the main API.", 503);
   try {
-    const res = await axios.post(`${LIST_URL}/api/dev-access/sync/${action}`, body, {
+    const res = await axios.post(`${LIST_URL}${path}`, body, {
       headers: { [DEV_ACCESS_SYNC_HEADER]: DEV_ACCESS_SYNC_KEY },
       timeout: 10_000,
     });
     return res.data as T;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
-      throw new ListError(error.response.data?.error || "The shared whitelist refused the request.", error.response.status);
+      throw new ListError(error.response.data?.error || "The main API refused the request.", error.response.status);
     }
     logger.error(error);
-    throw new ListError("Couldn't reach the shared whitelist. Try again in a moment.", 502);
+    throw new ListError("Couldn't reach the main API. Try again in a moment.", 502);
   }
 }
 

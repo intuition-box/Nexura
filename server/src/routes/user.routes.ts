@@ -20,6 +20,8 @@ import {
 } from "@/controllers/app.controller";
 import { logout } from "@/controllers/auth.controller";
 import { upload } from "@/config/multer";
+import { upload as safeUpload } from "@/middlewares/auth.middleware";
+import { markMyFeedbackSeen, myFeedback, replyToMyFeedback, submitFeedback } from "@/controllers/feedback.controller";
 
 const router = Router();
 
@@ -41,6 +43,10 @@ router
   .get("/referral-info", referralInfo)
   .post("/logout", logout)
   .post("/perform-daily-sign-in", performDailySignIn)
-  .patch("/update", upload.single("profilePic"), updateUser);
+  .patch("/update", upload.single("profilePic"), updateUser)
+  .post("/feedback", ...safeUpload.array("attachments", 3), submitFeedback("app"))
+  .get("/feedback", myFeedback("app"))
+  .post("/feedback/reply", replyToMyFeedback("app"))
+  .post("/feedback/seen", markMyFeedbackSeen("app"));
 
 export default router;
