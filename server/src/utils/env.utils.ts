@@ -11,6 +11,11 @@ const normalizedNetwork = process.env.NETWORK?.trim().toLowerCase();
 export const network: "testnet" | "mainnet" = normalizedNetwork === "mainnet" ? "mainnet" : "testnet";
 export const STUDIO_FEE_CONTRACT = network === "mainnet" ? "0xF26c210FAa3a7d3cB4107F222C5d994D064DCBa6" : "0xbb8AB9bfFDf563067F849f52e8E810d0084FfEB4";
 export const STREAK_RESTORE_CONTRACT = network === "mainnet" ? "0x48f4462FcbB1E6cc49D23Ff8Da58a38Adc0998a1" : "0x564885ee83Aa8565Da47F38186079cD552Cf60De";
+// What restoring a lost streak costs, in TRUST (the app pays the same amount)
+export const STREAK_RESTORE_FEE = network === "mainnet" ? "1" : "0.01";
+// A restore payment can be used within 48 hours, and our RPC is asked up to 3 times while it catches up
+export const STREAK_PAYMENT_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+export const STREAK_PAYMENT_LOOKUPS = Number(process.env.STREAK_PAYMENT_LOOKUPS ?? 3);
 export const STUDIO_PAYMENTS_ENABLED = process.env.STUDIO_PAYMENTS_ENABLED?.trim().toLowerCase() === "true";
 // On mainnet a missing flag would make every launch free; "false" is allowed when that's intended
 if (network === "mainnet" && !process.env.STUDIO_PAYMENTS_ENABLED?.trim()) {

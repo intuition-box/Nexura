@@ -13,6 +13,7 @@ import {
   claimStreakReward,
   fetchDailyXpDetails,
   restoreStreak,
+  getStreakRestore,
   getUserXpHistory,
   getUserPNL,
   getPositions,
@@ -39,6 +40,7 @@ router
   .post("/claim-streak-reward", claimStreakReward)
   .get("/xp-history", getUserXpHistory)
   .get("/daily-xp-details", fetchDailyXpDetails)
+  .get("/restore-streak", getStreakRestore)
   .post("/restore-streak", restoreStreak)
   .get("/referral-info", referralInfo)
   .post("/logout", logout)

@@ -18,11 +18,15 @@ import {
   network,
   PROXY_FEE_CONTRACT,
   STREAK_RESTORE_CONTRACT,
+  STREAK_RESTORE_FEE,
+  STREAK_PAYMENT_MAX_AGE_MS,
+  STREAK_PAYMENT_LOOKUPS,
   STUDIO_FEE_CONTRACT,
   THIRD_PARTY_API_KEY,
 } from "@/utils/env.utils";
 import {
   INTERNAL_SERVER_ERROR,
+  CONFLICT,
   OK,
   BAD_REQUEST,
   FORBIDDEN,
@@ -47,7 +51,7 @@ import {
   questCompleted,
 } from "@/models/questsCompleted.models";
 import { atomIds, GRAPHQL_API_URL, NexonsAddress, RELIC_CONTRACT } from "@/utils/constants";
-import { useTxOnce } from "@/models/usedTx.model";
+import { releaseTx, useTxOnce } from "@/models/usedTx.model";
 import { redeemLinkTicket } from "@/models/linkTicket.model";
 import { GraphQLClient } from "graphql-request";
 import { resilientFetch } from "@/utils/resilience";
@@ -2668,28 +2672,48 @@ export const performDailySignIn = async (
   }
 };
 
+/** GET /user/restore-streak: whether there's a lost streak to restore, checked before the app asks for payment. */
+export const getStreakRestore = async (req: GlobalRequest, res: GlobalResponse) => {
+  const streakToRestore = Number(req.user?.streakToRestore ?? 0);
+  res.status(OK).json({ canRestore: streakToRestore > 0, streakToRestore, fee: STREAK_RESTORE_FEE });
+};
+
+/** The payment as the chain sees it, waiting briefly when our RPC hasn't caught up with the wallet's yet. */
+async function findPayment(txHash: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getAmountPaid(txHash);
+    } catch (error) {
+      if (attempt >= STREAK_PAYMENT_LOOKUPS - 1) throw error;
+      await new Promise(r => setTimeout(r, 2_000));
+    }
+  }
+}
+
 export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
-    const txHash = req.query.transactionHash as string;
-
-    if (!txHash) {
-      res.status(BAD_REQUEST).json({ error: "transaction hash is required" });
-      return;
-    }
+    const txHash = String(req.query.transactionHash ?? req.body?.transactionHash ?? "");
 
     if (!TX_HASH.test(txHash)) {
       res.status(BAD_REQUEST).json({ error: "send a valid transaction hash" });
       return;
     }
 
-    const { from, to, success, timestamp, value } = await getAmountPaid(txHash);
+    // Checked first, so nobody is told about a payment problem when there was nothing to restore
+    if (!(Number(req.user.streakToRestore) > 0)) {
+      res.status(BAD_REQUEST).json({ error: "there's no streak to restore" });
+      return;
+    }
 
-    if (
-      checksumAddress(from as Address) !== checksumAddress(req.user.address)
-    ) {
-      res
-        .status(BAD_REQUEST)
-        .json({ error: "transaction must be from the user's address" });
+    const payment = await findPayment(txHash).catch(() => null);
+    if (!payment) {
+      res.status(CONFLICT).json({ error: "We can't see this payment yet. Try again in a moment.", retry: true });
+      return;
+    }
+    const { from, to, success, value, blockTime } = payment;
+
+    if (checksumAddress(from as Address) !== checksumAddress(req.user.address)) {
+      res.status(BAD_REQUEST).json({ error: "this payment must come from the wallet you signed in with" });
       return;
     }
 
@@ -2698,30 +2722,14 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
       return;
     }
 
-    const amount = network === "mainnet" ? "1" : "0.01";
-
-    if (value !== amount) {
-      res
-        .status(BAD_REQUEST)
-        .json({
-          error: `user must deposit ${amount} trust before streak can be restored`,
-        });
+    // Compared in wei: formatEther writes 1 TRUST as "1.0", so comparing text with "1" never matched
+    if (parseEther(value) < parseEther(STREAK_RESTORE_FEE)) {
+      res.status(BAD_REQUEST).json({ error: `restoring a streak costs ${STREAK_RESTORE_FEE} TRUST` });
       return;
     }
 
-    const currentDate = new Date().toLocaleDateString("en-US", {
-      timeZone: "Africa/Lagos",
-    }) as string;
-
-    if (timestamp !== currentDate) {
-      res
-        .status(BAD_REQUEST)
-        .json({ error: "transaction must be from the current day" });
-      return;
-    }
-
-    if (!(req.user.streakToRestore > 0)) {
-      res.status(BAD_REQUEST).json({ error: "there's no streak to restore" });
+    if (Date.now() - blockTime > STREAK_PAYMENT_MAX_AGE_MS) {
+      res.status(BAD_REQUEST).json({ error: "this payment is more than 48 hours old" });
       return;
     }
 
@@ -2734,12 +2742,18 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
 
     const date = today.toISOString().split("T")[0] as string;
 
-    const streak = (req.user.streakToRestore += 1);
+    const streak = Number(req.user.streakToRestore) + 1;
 
-    await user.findByIdAndUpdate(req.id, {
-      $inc: { totalCheckIns: 1, xp: 50 },
-      $set: { streak, lastSignInDate: date, streakToRestore: 0 },
-    });
+    // Only while there is still a streak to restore (two payments at once restore it once)
+    const restored = await user.findOneAndUpdate(
+      { _id: req.id, streakToRestore: { $gt: 0 } },
+      { $inc: { totalCheckIns: 1, xp: 50 }, $set: { streak, lastSignInDate: date, streakToRestore: 0 } },
+    );
+    if (!restored) {
+      await releaseTx(txHash, "restore-streak");
+      res.status(BAD_REQUEST).json({ error: "there's no streak to restore" });
+      return;
+    }
 
     const month = formatDate(new Date(), "MMM, y");
 
