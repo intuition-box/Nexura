@@ -1,6 +1,8 @@
 import logger from "@/config/logger";
-import { hub, userHub } from "@/models/hub.model";
+import { hub, userHub, userHubAdmin } from "@/models/hub.model";
 import { hubAdmin } from "@/models/hub.model";
+import { hubGovernance } from "@/models/governance.model";
+import { user } from "@/models/user.model";
 import { spentPayment } from "@/models/spentPayment.model";
 import { BAD_REQUEST, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_FOUND, OK } from "@/utils/status.utils";
 import { STUDIO_CAMPAIGN_FEE, STUDIO_FEE_CONTRACT, STUDIO_PAYMENTS_ENABLED } from "@/utils/env.utils";
@@ -22,12 +24,31 @@ const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const PAYMENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 
-export async function launchFeeProblem(txHash: unknown, minFee: string = STUDIO_CAMPAIGN_FEE): Promise<string | null> {
+/** Wallets allowed to pay for a hub: its admins' linked wallets, its signers' wallets, and the caller's own. */
+export async function hubPayerWallets(hubId: unknown, me?: { linkedWallet?: string | null; userId?: unknown } | null): Promise<Set<string>> {
+  const wallets: unknown[] = [me?.linkedWallet];
+  if (hubId) {
+    const [admins, gov, userAdmins] = await Promise.all([
+      hubAdmin.find({ hub: hubId }).select("linkedWallet").lean() as Promise<{ linkedWallet?: string | null }[]>,
+      hubGovernance.findOne({ hub: hubId }).select("signerWallets").lean() as Promise<{ signerWallets?: Record<string, string> } | null>,
+      userHubAdmin.find({ hub: hubId }).select("userId").lean() as Promise<{ userId?: unknown }[]>,
+    ]);
+    wallets.push(...admins.map(a => a.linkedWallet), ...Object.values(gov?.signerWallets ?? {}));
+    const userIds = [...userAdmins.map(a => a.userId), me?.userId].filter(Boolean);
+    if (userIds.length) wallets.push(...(await user.find({ _id: { $in: userIds } }).select("address").lean()).map((u: any) => u.address));
+  } else if (me?.userId) {
+    wallets.push((await user.findById(me.userId).select("address").lean() as any)?.address);
+  }
+  return new Set(wallets.filter((w): w is string => typeof w === "string" && !!w).map(w => w.toLowerCase()));
+}
+
+export async function launchFeeProblem(txHash: unknown, minFee: string, payers: Set<string>): Promise<string | null> {
   if (typeof txHash !== "string" || !TX_HASH.test(txHash)) return "send a valid payment transaction hash";
   if (await spentPayment.exists({ txHash: txHash.toLowerCase() })) return "this payment was already used for another launch; pay the launch fee again";
   const tx = await getAmountPaid(txHash).catch(() => null);
   if (!tx || !tx.success) return "that payment wasn't found or didn't go through";
   if (tx.to.toLowerCase() !== STUDIO_FEE_CONTRACT.toLowerCase()) return "that transaction wasn't sent to the Nexura fee contract";
+  if (!payers.has(tx.from.toLowerCase())) return "that payment wasn't sent from a wallet in your hub; pay from the wallet linked to your account";
   if (parseEther(tx.value) < parseEther(minFee)) return `the launch fee is ${minFee} $TRUST`;
   if (Date.now() - tx.blockTime > PAYMENT_MAX_AGE_MS) return "that payment is too old; pay the launch fee again";
   return null;
@@ -65,7 +86,7 @@ export const requireStudioPayment = async (req: GlobalRequest, res: GlobalRespon
     }
 
     const storedHash = (finalDoc as any).pendingTxHash;
-    const problem = await launchFeeProblem(storedHash, await hostLaunchFee(req.query?.id));
+    const problem = await launchFeeProblem(storedHash, await hostLaunchFee(req.query?.id), await hubPayerWallets(hubId, req.admin));
     if (problem) {
       res.status(FORBIDDEN).json({ error: storedHash ? problem : `No confirmed payment found. Please complete the ${STUDIO_CAMPAIGN_FEE} $TRUST launch fee first.` });
       return;
@@ -84,7 +105,7 @@ export const savePaymentHash = async (req: GlobalRequest, res: GlobalResponse) =
   try {
     const { txHash } = req.body;
     if (txHash && STUDIO_PAYMENTS_ENABLED) {
-      const problem = await launchFeeProblem(txHash, minLaunchFeeShare());
+      const problem = await launchFeeProblem(txHash, minLaunchFeeShare(), await hubPayerWallets(req.admin?.hub, req.admin));
       if (problem) {
         res.status(BAD_REQUEST).json({ error: problem });
         return;

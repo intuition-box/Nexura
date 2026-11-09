@@ -86,7 +86,7 @@ export const verifyTwoFactorLogin = async (req: GlobalRequest, res: GlobalRespon
       return;
     }
     touchHubAdminActivity(String(admin._id));
-    res.cookie("hubRefreshToken", getRefreshToken(String(admin._id)), { httpOnly: true, secure: true, maxAge: 30 * 24 * 60 * 60 });
+    res.cookie("hubRefreshToken", getRefreshToken(String(admin._id)), { httpOnly: true, secure: true, maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.status(OK).json({
       message: "signed in!",
       accessToken: JWT.sign(String(admin._id), hubSessionTtl(req.body?.remember)),

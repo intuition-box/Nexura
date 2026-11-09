@@ -24,12 +24,14 @@ import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/auth
 // import testSeedRoutes from "./test-seed.routes.ts";
 import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback, proveWallet } from "@/controllers/hub.auth.controller.ts";
 import { tokenPricesUsd } from "@/utils/tokenPrices";
+import { feedbackSync } from "@/controllers/feedback.controller";
 
 const router = Router();
 
 router
 	.use(devAccessGate)
 	.use("/dev-access", devAccessRoutes)
+	.post("/feedback/sync/:action", feedbackSync)
 	.get("/server-time", (_req, res) => {
 		res.json({ serverTime: Date.now() });
 	})

@@ -89,11 +89,16 @@ import { upload } from "@/config/multer";
 import { attachAdminCampaignHub, requireAdminSuperadmin } from "@/middlewares/auth.middleware";
 import { publishAdminCampaign } from "@/controllers/adminCampaign.controller";
 import { noPaymentRequired } from "@/controllers/adminPublish.controller";
+import { adminListFeedback, adminMarkFeedbackSeen, adminReplyFeedback, adminSetFeedbackStatus } from "@/controllers/feedback.controller";
 import { addCampaignAddress, closeCampaign, fetchHubCampaigns, recordCampaignRewardsWithdrawal, reopenCampaign } from "@/controllers/campaign.controller";
 
 const router = Router();
 
 router
+  .get("/feedback", adminListFeedback)
+  .post("/feedback/reply", adminReplyFeedback)
+  .patch("/feedback/status", adminSetFeedbackStatus)
+  .post("/feedback/seen", adminMarkFeedbackSeen)
   .post("/create-quest", createQuest)
   .post("/validate-task", markTask)
   .get("/location-analytics", getLocationAnalytics)

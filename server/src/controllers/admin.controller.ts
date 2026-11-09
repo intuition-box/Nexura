@@ -780,7 +780,7 @@ export const adminLogin = async (req: GlobalRequest, res: GlobalResponse) => {
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
     // Update admin activity on login
@@ -851,7 +851,7 @@ export const createAdmin = async (req: GlobalRequest, res: GlobalResponse) => {
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(OK).json({
@@ -1203,7 +1203,7 @@ export const resetAdminPassword = async (req: GlobalRequest, res: GlobalResponse
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.status(OK).json({

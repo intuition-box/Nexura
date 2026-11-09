@@ -36,7 +36,7 @@ export default function SignerReminder() {
     try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
   };
   return (
-    <div role="status" className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50 w-[300px] max-w-[calc(100vw-32px)] rounded-[24px] bg-white border-[0.833px] border-solid border-[rgba(194,124,0,0.3)] shadow-[0_12px_32px_rgba(28,37,51,0.14)] p-[16px]" style={{ fontFamily: "'Geist', 'Inter', sans-serif" }}>
+    <div role="status" className="fixed bottom-[156px] right-4 md:bottom-[84px] md:right-6 z-50 w-[300px] max-w-[calc(100vw-32px)] rounded-[24px] bg-white border-[0.833px] border-solid border-[rgba(194,124,0,0.3)] shadow-[0_12px_32px_rgba(28,37,51,0.14)] p-[16px]" style={{ fontFamily: "'Geist', 'Inter', sans-serif" }}>
       <div className="flex items-start justify-between gap-[8px]">
         <p className="text-[14px] font-semibold leading-[20px] text-[#1c2533]">{count} of {RECOMMENDED_SIGNERS} recommended signers</p>
         <button onClick={dismiss} aria-label="Dismiss" className="grid place-items-center size-[24px] -mt-[2px] -mr-[4px] rounded-full text-[#69728a] hover:bg-[#f4f1fc]">✕</button>

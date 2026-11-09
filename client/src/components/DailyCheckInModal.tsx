@@ -18,6 +18,37 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { modalBackdrop, modalPanel } from "../lib/motion";
 
+// A streak-restore payment the server hasn't accepted yet, kept so a retry doesn't pay twice (the server takes it for 48h)
+const PENDING_RESTORE_KEY = "nexura:pending-streak-restore";
+const PENDING_RESTORE_MAX_MS = 47 * 60 * 60 * 1000;
+// Server answers that mean the saved payment can never be used
+const FINAL_RESTORE_ERRORS = /already been used|more than 48 hours|must come from the wallet|isn't a streak-restore payment|no streak to restore|costs/i;
+
+function readPendingRestore(wallet: string): string | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(PENDING_RESTORE_KEY) ?? "null");
+    if (p && p.wallet === wallet && Date.now() - Number(p.at) < PENDING_RESTORE_MAX_MS && /^0x[0-9a-fA-F]{64}$/.test(p.hash)) return p.hash;
+  } catch { /* storage blocked */ }
+  return null;
+}
+function savePendingRestore(wallet: string, hash: string) {
+  try { localStorage.setItem(PENDING_RESTORE_KEY, JSON.stringify({ wallet, hash, at: Date.now() })); } catch { /* storage blocked */ }
+}
+function clearPendingRestore() {
+  try { localStorage.removeItem(PENDING_RESTORE_KEY); } catch { /* storage blocked */ }
+}
+async function submitRestore(txHash: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await apiRequestV2("POST", `/api/user/restore-streak?transactionHash=${txHash}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!/can't see this payment yet/i.test(msg) || attempt >= 2) throw err;
+      await new Promise(r => setTimeout(r, 4_000));
+    }
+  }
+}
+
 interface DailyCheckInModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -364,17 +395,22 @@ const isBrokenBeforeNextMilestone = useMemo(() => {
 }, [streakLost, streak, nextMilestoneDay]);
 
 const handleRestoreStreak = async () => {
+  const wallet = String(user?.address ?? "").toLowerCase();
   try {
     setIsLoading(true);
 
-    // 1. pay onchain fee
-    const txHash = await payRestoreStreakFee();
+    // 1. A payment that was made but not yet accepted is used again instead of paying twice
+    let txHash = readPendingRestore(wallet);
+    if (!txHash) {
+      const check = await apiRequestV2("GET", "/api/user/restore-streak");
+      if (!check?.canRestore) throw new Error("There's no streak to restore right now.");
+      txHash = await payRestoreStreakFee();
+      savePendingRestore(wallet, txHash);
+    }
 
-    // 2. send tx hash to backend
-    await apiRequestV2(
-      "POST",
-      `/api/user/restore-streak?transactionHash=${txHash}`
-    );
+    // 2. Send it to the server, waiting a little if the payment isn't visible there yet
+    await submitRestore(txHash);
+    clearPendingRestore();
 
     // 3. refresh state
     await fetchHistory();
@@ -387,10 +423,13 @@ const handleRestoreStreak = async () => {
 
   } catch (err) {
     console.log("restore error:", err);
+    const message = err instanceof Error && err.message ? err.message : "Payment or restore process failed.";
+    // The payment can't be used: forget it so the next try starts fresh
+    if (FINAL_RESTORE_ERRORS.test(message)) clearPendingRestore();
 
     toast({
       title: "Restore failed",
-      description: "Payment or restore process failed.",
+      description: readPendingRestore(wallet) ? `${message} Your payment is saved; press Restore again to retry without paying again.` : message,
       variant: "destructive",
     });
   } finally {
