@@ -9,10 +9,13 @@ import ProjectLogoutButton from "@/components/ProjectLogoutButton";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import AnalyticsBackground from "@/components/AnalyticsBackground";
 import { isStudioLive } from "@/lib/studioAvailability";
+import SupportWidget from "@/components/support/SupportWidget";
+import { useAuth } from "@/lib/auth";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const location = usePathname();
   const mainRef = useRef<HTMLElement>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
@@ -98,6 +101,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       {/* {!isHome && !isStudio && !isProject && <OrgSignInButton />} */}
       {isProject && <ProjectLogoutButton />}
+      {user && !isStudio && !isProject && <SupportWidget mode="app" />}
     </div>
   );
 }

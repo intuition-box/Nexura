@@ -11,7 +11,8 @@ import {
   fetchChannels,
   fetchServers
 } from "@/controllers/hub.auth.controller";
-import { authenticateHubAdmin, authenticateHubAdmin2 } from "@/middlewares/auth.middleware";
+import { authenticateHubAdmin, authenticateHubAdmin2, upload } from "@/middlewares/auth.middleware";
+import { markMyFeedbackSeen, myFeedback, replyToMyFeedback, submitFeedback } from "@/controllers/feedback.controller";
 import { fetchHubCampaigns, publishCampaign } from "@/controllers/campaign.controller";
 import { requireStudioPayment } from "@/controllers/studioPayment.controller";
 import { validateCampaignSubmissions, validateCampaignSubmissionsBulk, getCampaignSubmissions, getHub, getHubAdmins, updateIds, checkUsernameAvailable, changeUsername, getHubNotifications, getHubActivity, markHubNotificationsRead } from "@/controllers/hub.controller";
@@ -44,6 +45,10 @@ router
   .get("/retention-draft", authenticateHubAdmin2, getRetentionDraft)
   .put("/retention-draft", authenticateHubAdmin2, saveRetentionDraft)
   .get("/hub-admins", authenticateHubAdmin2, getHubAdmins)
+  .post("/feedback", authenticateHubAdmin2, ...upload.array("attachments", 3), submitFeedback("studio"))
+  .get("/feedback", authenticateHubAdmin2, myFeedback("studio"))
+  .post("/feedback/reply", authenticateHubAdmin2, replyToMyFeedback("studio"))
+  .post("/feedback/seen", authenticateHubAdmin2, markMyFeedbackSeen("studio"))
   .patch("/publish-campaign", authenticateHubAdmin, requireInHub(campaignInHub, fromQuery("id"), "campaign"), requireStudioPayment, publishCampaign)
   .get("/co-hosts/search", authenticateHubAdmin, searchCoHostStudios)
   .get("/campaign-co-hosts", authenticateHubAdmin2, requireInHub(campaignInHub, fromQuery("id"), "campaign"), getCampaignCoHosts)

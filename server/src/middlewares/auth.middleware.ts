@@ -255,7 +255,10 @@ export const authenticateUser2 = async (req: GlobalRequest, res: GlobalResponse,
 		if (token && token !== "null" && token !== "undefined") {
 			try {
 				const { id } = await JWT.verify(token) as decodedDataType;
-				req.id = id as string;
+				// Logged-out tokens and banned users carry on signed out
+				if (!(await isTokenRevoked(token)) && !(await bannedUser.exists({ userId: id }))) {
+					req.id = id as string;
+				}
 				next();
 				return;
 			} catch {

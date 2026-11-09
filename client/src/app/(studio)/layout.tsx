@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import StudioUpgradeNotice from "@/components/studio/StudioUpgradeNotice";
 import { isStudioLive, isStudioPath } from "@/lib/studioAvailability";
+import SupportWidget from "@/components/support/SupportWidget";
+import { getStoredProjectToken } from "@/lib/projectApi";
 
 export default function StudioGroupLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
@@ -13,6 +15,11 @@ export default function StudioGroupLayout({ children }: { children: React.ReactN
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [pathname]);
+
+  // Signed-in Studio pages get the support button
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => { setSignedIn(!!getStoredProjectToken()); }, [pathname]);
+  const showSupport = signedIn && pathname.startsWith("/studio-dashboard") && isStudioLive();
 
   useEffect(() => {
     const isStudioRoute =
@@ -41,6 +48,7 @@ export default function StudioGroupLayout({ children }: { children: React.ReactN
           {isStudioPath(pathname) && !isStudioLive() ? <StudioUpgradeNotice /> : children}
         </main>
       </div>
+      {showSupport && <SupportWidget mode="studio" />}
     </div>
   );
 }

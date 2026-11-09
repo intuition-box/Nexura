@@ -7,7 +7,7 @@ import { addHubAdminEmail } from '@/utils/sendMail';
 import { createHubInvite, InviteError } from '@/utils/hubInvite';
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, CREATED, OK, NO_CONTENT, NOT_FOUND, FORBIDDEN } from '@/utils/status.utils';
 import { CLIENT_URL, STUDIO_PAYMENTS_ENABLED } from '@/utils/env.utils';
-import { launchFeeProblem } from '@/controllers/studioPayment.controller';
+import { hubPayerWallets, launchFeeProblem } from '@/controllers/studioPayment.controller';
 import { minLaunchFeeShare } from '@/controllers/coHost.controller';
 import { generateOTP, validateHubData, getMissingFields, validateCampaignData, validateCampaignQuestData, validateSaveCampaignData, validateUserHubData, validateDiscordTaskConfig } from '@/utils/utils';
 import logger from '@/config/logger';
@@ -208,7 +208,7 @@ export const savePaymentHash = async (req: GlobalRequest, res: GlobalResponse) =
   try {
     const { txHash } = req.body;
     if (txHash && STUDIO_PAYMENTS_ENABLED) {
-      const problem = await launchFeeProblem(txHash, minLaunchFeeShare());
+      const problem = await launchFeeProblem(txHash, minLaunchFeeShare(), await hubPayerWallets(req.admin?.hub, req.admin));
       if (problem) {
         res.status(BAD_REQUEST).json({ error: problem });
         return;

@@ -361,10 +361,10 @@ export const markCoHostReady = async (req: GlobalRequest, res: GlobalResponse) =
 
     let feeTxHash: string | null = null;
     if (STUDIO_PAYMENTS_ENABLED) {
-      const { launchFeeProblem } = await import("@/controllers/studioPayment.controller");
+      const { launchFeeProblem, hubPayerWallets } = await import("@/controllers/studioPayment.controller");
       const txHash: string | null = myHubDoc?.pendingTxHash ?? null;
       const due = formatEther(feeShare);
-      const payProblem = await launchFeeProblem(txHash, due);
+      const payProblem = await launchFeeProblem(txHash, due, await hubPayerWallets(myHub, req.admin));
       if (payProblem) throw new CoHostError(FORBIDDEN, txHash ? payProblem : `pay your ${due} $TRUST share of the launch fee first`);
       const claimed = await hub.findOneAndUpdate({ _id: myHub, pendingTxHash: txHash }, { $set: { pendingTxHash: null } });
       if (!claimed) throw new CoHostError(BAD_REQUEST, "this payment was just used for something else; pay your share again");
