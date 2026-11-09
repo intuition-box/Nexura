@@ -27,7 +27,7 @@ import axios from "axios";
 import { cvModel } from "@/models/cv.models";
 import { token } from "@/models/tokens.model";
 import { bannedUser } from "@/models/bannedUser.model";
-import { REDIS } from "@/utils/redis.utils";
+import { revokeToken } from "@/models/revokedToken.model";
 import { fetchWithRetry } from "@/utils/resilience";
 import { walletLoginProblem } from "@/utils/walletLogin";
 // The same signature also proves the wallet to Nexura Studio: one wallet login for both apps
@@ -311,7 +311,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 			res.cookie("refreshToken", refreshToken, {
 				httpOnly: true,
 				secure: true,
-				maxAge: 30 * 24 * 60 * 60,
+				maxAge: 30 * 24 * 60 * 60 * 1000,
 			});
 
 			res.status(CREATED).json({ message: "user created!", accessToken, user: newUser, walletToken: issueWalletToken(address) });
@@ -329,7 +329,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		res.cookie("refreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(200).json({ message: "signed in", accessToken, user: userExists, walletToken: issueWalletToken(address) });
@@ -348,7 +348,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 					res.cookie("refreshToken", refreshToken, {
 						httpOnly: true,
 						secure: true,
-						maxAge: 30 * 24 * 60 * 60,
+						maxAge: 30 * 24 * 60 * 60 * 1000,
 					});
 					res.status(200).json({ message: "signed in", accessToken, user: existingUser, walletToken: issueWalletToken(address) });
 					return;
@@ -369,7 +369,8 @@ export const logout = async (req: GlobalRequest, res: GlobalResponse) => {
     res.clearCookie("refreshToken");
 
     // await REDIS.del(`user:${id}`);
-    await REDIS.set({ key: `access-token:${token}`, data: { token }, ttl: 7 * 24 * 60 * 60});
+    // The key the auth middleware checks; the old "access-token:" key was never read
+    if (token) await revokeToken(token);
 
 		res.status(200).json({ message: "logged out" });
 	} catch (error) {

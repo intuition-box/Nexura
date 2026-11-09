@@ -125,7 +125,7 @@ export const signIn = async (req: GlobalRequest, res: GlobalResponse) => {
 		res.cookie("hubRefreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(OK).json({
@@ -236,7 +236,7 @@ export const superAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) 
     res.cookie("hubRefreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.status(CREATED).json({ message: "super admin created", accessToken });
@@ -494,7 +494,7 @@ export const hubAdminSignUp = async (req: GlobalRequest, res: GlobalResponse) =>
 		res.cookie("hubRefreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		// Delete the OTP after successful signup
@@ -606,7 +606,7 @@ export const resetPassword = async (req: GlobalRequest, res: GlobalResponse) => 
 		res.cookie("hubRefreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(OK).json({
@@ -720,7 +720,7 @@ export const userHubSignIn = async (req: GlobalRequest, res: GlobalResponse) => 
 		res.cookie("userHubRefreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(OK).json({
@@ -830,7 +830,7 @@ export const userHubAdminSignUp = async (req: GlobalRequest, res: GlobalResponse
     res.cookie("userHubRefreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
 		res.status(CREATED).json({ message: "user hub admin created", accessToken, admin: { _id: superAdmin._id.toString(), name: superAdmin.name, email: superAdmin.email, role: "superadmin", hub: createdHub._id.toString() }, hub: { logo: createdHub.logo || "" } });
@@ -938,7 +938,7 @@ export const userHubResetPassword = async (req: GlobalRequest, res: GlobalRespon
 		res.cookie("userHubRefreshToken", refreshToken, {
 			httpOnly: true,
 			secure: true,
-			maxAge: 30 * 24 * 60 * 60,
+			maxAge: 30 * 24 * 60 * 60 * 1000,
 		});
 
 		res.status(OK).json({

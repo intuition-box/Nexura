@@ -99,7 +99,7 @@ export const verifyAdminTwoFactorLogin = async (req: GlobalRequest, res: GlobalR
     }
     const adminId = String(me._id);
     await admin.updateOne({ _id: adminId }, { $set: { lastActivity: new Date() } });
-    res.cookie("refreshToken", getRefreshToken(adminId), { httpOnly: true, secure: true, maxAge: 30 * 24 * 60 * 60 });
+    res.cookie("refreshToken", getRefreshToken(adminId), { httpOnly: true, secure: true, maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.status(OK).json({
       message: "admin logged in",
       accessToken: JWT.sign(adminId, hubSessionTtl(req.body?.remember)),
