@@ -17,9 +17,9 @@ export const STREAK_RESTORE_FEE = network === "mainnet" ? "1" : "0.01";
 export const STREAK_PAYMENT_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 export const STREAK_PAYMENT_LOOKUPS = Number(process.env.STREAK_PAYMENT_LOOKUPS ?? 3);
 export const STUDIO_PAYMENTS_ENABLED = process.env.STUDIO_PAYMENTS_ENABLED?.trim().toLowerCase() === "true";
-// On mainnet a missing flag would make every launch free; "false" is allowed when that's intended
+// On mainnet a missing flag means launches are free: warn loudly, but never stop the server over it
 if (network === "mainnet" && !process.env.STUDIO_PAYMENTS_ENABLED?.trim()) {
-  throw new Error("STUDIO_PAYMENTS_ENABLED must be set on mainnet (true, or false to launch for free on purpose)");
+  console.warn("[env] STUDIO_PAYMENTS_ENABLED isn't set on mainnet, so Studio launches are free. Set it to true (or false on purpose).");
 }
 export const STUDIO_CAMPAIGN_FEE = network === "mainnet" ? "1000" : "1";
 export const PROXY_FEE_CONTRACT = (process.env.PROXY_FEE_CONTRACT?.trim()
