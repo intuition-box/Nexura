@@ -20,6 +20,7 @@ import { verifyAdminTwoFactorLogin, ADMIN_TWO_FACTOR_PURPOSE } from "@/controlle
 import { createAdmin, adminLogin, checkAdminSignInWallet, forgotAdminPassword, resetAdminPassword } from "@/controllers/admin.controller";
 import { authenticateUser2, authenticateAdmin, authenticateUser } from "@/middlewares/auth.middleware";
 import userHubRoutes from "./userHub.routes.ts";
+import { studioGate } from "@/middlewares/studioGate";
 import { attemptGuard, authIpLimiter, codeSendLimiter, twoFactorAccount } from "@/middlewares/authGuard";
 // import testSeedRoutes from "./test-seed.routes.ts";
 import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback, proveWallet } from "@/controllers/hub.auth.controller.ts";
@@ -57,12 +58,12 @@ router
 	.use("/campaign", campaignRoutes)
   .get("/leaderboard", authenticateUser2, getLeaderboard)
 	.get("/quest/fetch-mini-quests", authenticateUser2, fetchMiniQuests)
-  .use("/hub", hubRoutes)
-	.use("/user-hub", userHubRoutes)
+  .use("/hub", studioGate, hubRoutes)
+	.use("/user-hub", studioGate, userHubRoutes)
 	.use("/quest", authenticateUser, questRoutes)
   .use("/lesson", lessonRoutes)
-  .post("/hub-auth/validate-email", codeSendLimiter, validateHubEmail)
-	.post("/auth/confirm-hub-email-validation", authIpLimiter, attemptGuard("hub-email-code"), confirmHubEmailValidation)
+  .post("/hub-auth/validate-email", studioGate, codeSendLimiter, validateHubEmail)
+	.post("/auth/confirm-hub-email-validation", studioGate, authIpLimiter, attemptGuard("hub-email-code"), confirmHubEmailValidation)
 	.use("/user", authenticateUser, userRoutes);
 
 export default router;
