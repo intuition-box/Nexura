@@ -243,7 +243,7 @@ const campaignCompletedSchema = new Schema({
 	// Stage keys whose XP has been paid, and the XP paid so far (see utils/campaignXp.ts)
 	xpStagesPaid: { type: [String], default: [] },
 	xpEarned: { type: Number, default: 0 },
-	// TRUST reward eligibility (see utils/campaignRewards.ts): granted once their Nexura score
+	// TRUST reward eligibility (see utils/campaignRewards.ts): granted once the open stages are done and their Nexura score
 	// meets the project's minimum. It reserves no place: places go first come, first served
 	trustEligible: { type: Boolean, default: false },
 	trustEligibleAt: { type: Date, default: null },

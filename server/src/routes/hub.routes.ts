@@ -17,10 +17,10 @@ import { fetchHubCampaigns, publishCampaign } from "@/controllers/campaign.contr
 import { requireStudioPayment } from "@/controllers/studioPayment.controller";
 import { validateCampaignSubmissions, validateCampaignSubmissionsBulk, getCampaignSubmissions, getHub, getHubAdmins, updateIds, checkUsernameAvailable, changeUsername, getHubNotifications, getHubActivity, markHubNotificationsRead } from "@/controllers/hub.controller";
 import { getSubmissionCampaigns, getCampaignSubmissionDetails } from "@/controllers/submissions.controller";
-import { disableTwoFactor, enableTwoFactor, setupTwoFactor, verifyTwoFactorLogin } from "@/controllers/twoFactor.controller";
+import { disableTwoFactor, enableTwoFactor, setupTwoFactor, verifyTwoFactorLogin, TWO_FACTOR_PURPOSE } from "@/controllers/twoFactor.controller";
 import { getRetentionDraft, saveRetentionDraft } from "@/controllers/retentionDraft.controller";
 import hubAppRoutes from "./hub.app.routes";
-import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/authGuard";
+import { attemptGuard, authIpLimiter, codeSendLimiter, twoFactorAccount } from "@/middlewares/authGuard";
 import { requireInHub, fromQuery, campaignInHub } from "@/utils/hubOwnership";
 import governanceRoutes from "./governance.routes";
 import { declineCoHostInvite, getCampaignCoHosts, getCoHostInvites, getCoHostedCampaign, inviteCoHost, markCoHostReady, removeCoHost, saveCoHostStages, searchCoHostStudios } from "@/controllers/coHost.controller";
@@ -40,7 +40,7 @@ router
   .post("/2fa/setup", authenticateHubAdmin2, setupTwoFactor)
   .post("/2fa/enable", authenticateHubAdmin2, enableTwoFactor)
   .post("/2fa/disable", authenticateHubAdmin2, disableTwoFactor)
-  .post("/2fa/verify-login", authIpLimiter, verifyTwoFactorLogin)
+  .post("/2fa/verify-login", authIpLimiter, attemptGuard("hub-2fa", twoFactorAccount(TWO_FACTOR_PURPOSE)), verifyTwoFactorLogin)
   .patch("/username", authenticateHubAdmin2, changeUsername)
   .get("/retention-draft", authenticateHubAdmin2, getRetentionDraft)
   .put("/retention-draft", authenticateHubAdmin2, saveRetentionDraft)

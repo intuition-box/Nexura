@@ -592,34 +592,8 @@ export const resetPassword = async (req: GlobalRequest, res: GlobalResponse) => 
 		// Each code works once; any other reset code for this email is spent too
 		await OTP.deleteMany({ email: email.trim().toLowerCase(), page: "project", hubId: null });
 
-		// With a linked wallet, an email code alone never opens a session: sign in with the wallet
-		if (await linkedHubWallet(adminExists)) {
-			res.status(OK).json({ message: "admin password reset successful!", signInRequired: true });
-			return;
-		}
-
-		const id = adminExists._id.toString();
-		touchHubAdminActivity(id);
-		const accessToken = JWT.sign(id);
-		const refreshToken = getRefreshToken(id);
-
-		res.cookie("hubRefreshToken", refreshToken, {
-			httpOnly: true,
-			secure: true,
-			maxAge: 30 * 24 * 60 * 60 * 1000,
-		});
-
-		res.status(OK).json({
-			message: "admin password reset successful!",
-			accessToken,
-			admin: {
-				_id: adminExists._id,
-				name: adminExists.name,
-				email: adminExists.email,
-				role: adminExists.role,
-				hub: adminExists.hub,
-			},
-		});
+		// An email code alone never opens a session: sign-in still needs the wallet and 2FA
+		res.status(OK).json({ message: "admin password reset successful!", signInRequired: true });
 	} catch (error) {
 		logger.error(error);
 		res

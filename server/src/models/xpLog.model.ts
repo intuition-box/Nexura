@@ -9,4 +9,6 @@ const xpLogSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 
+xpLogSchema.index({ address: 1, type: 1, timestamp: -1 });
+
 export const xpLog = mongoose.model("xpLog", xpLogSchema);

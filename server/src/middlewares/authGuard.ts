@@ -2,6 +2,7 @@ import rateLimit from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 import { redis } from "@/config/redis";
 import logger from "@/config/logger";
+import { JWT } from "@/utils/utils";
 
 /**
  * Brute-force protection for sign-in and one-time-code endpoints.
@@ -76,11 +77,15 @@ const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60000));
 /**
  * Locks out repeated failures on one endpoint family (`scope`, e.g. "hub-login").
  * A response of 400/401/404 counts as a wrong attempt; any 2xx clears the counters.
- * `field` is the body field holding the email.
+ * `keyFrom` is the body field holding the email, or a function returning the account key.
  */
-export const attemptGuard = (scope: string, field = "email") =>
+export const attemptGuard = (scope: string, keyFrom: string | ((req: Request) => Promise<string>) = "email") =>
   async (req: Request, res: Response, next: NextFunction) => {
-    const email = String((req.body ?? {})[field] ?? "").trim().toLowerCase();
+    let email = "";
+    try {
+      email = typeof keyFrom === "string" ? String((req.body ?? {})[keyFrom] ?? "") : await keyFrom(req);
+    } catch { /* no key: the IP limit still applies */ }
+    email = email.trim().toLowerCase();
     if (!email) { next(); return; }
 
     const pairKey = `auth-fail:${scope}:${email}:${clientIp(req)}`;
@@ -116,6 +121,10 @@ export const attemptGuard = (scope: string, field = "email") =>
     });
     next();
   };
+
+/** Keys the 2FA step on the account inside a valid 2FA token, so guesses lock that account whatever the IP. */
+export const twoFactorAccount = (purpose: string) => async (req: Request) =>
+  (await JWT.verifyFor(String(req.body?.twoFactorToken ?? ""), purpose)).id;
 
 /** Caps how many sign-in / code requests one IP can make, whatever the email. */
 export const authIpLimiter = rateLimit({

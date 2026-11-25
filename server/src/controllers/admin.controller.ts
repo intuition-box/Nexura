@@ -1198,19 +1198,8 @@ export const resetAdminPassword = async (req: GlobalRequest, res: GlobalResponse
 
     await REDIS.set({ key: `admin-reset-access-token:${token}`, data: { token }, ttl: 10 * 60 });
 
-    const { accessToken, refreshToken, admin: authAdmin } = buildAdminAuthPayload(adminExists.toObject());
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
-
-    res.status(OK).json({
-      message: "admin password reset successful!",
-      accessToken,
-      admin: authAdmin,
-    });
+    // No session here: signing in still needs the linked wallet and the 2FA code
+    res.status(OK).json({ message: "admin password reset successful! sign in with your new password", signInRequired: true });
   } catch (error) {
     logger.error(error);
     res.status(INTERNAL_SERVER_ERROR).json({ error: "Error resetting admin password" });

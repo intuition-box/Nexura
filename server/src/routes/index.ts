@@ -16,11 +16,11 @@ import {
 	fetchQuests,
 } from "@/controllers/quest.controller.ts";
 import { signIn } from "@/controllers/auth.controller";
-import { verifyAdminTwoFactorLogin } from "@/controllers/platformAccount.controller";
+import { verifyAdminTwoFactorLogin, ADMIN_TWO_FACTOR_PURPOSE } from "@/controllers/platformAccount.controller";
 import { createAdmin, adminLogin, checkAdminSignInWallet, forgotAdminPassword, resetAdminPassword } from "@/controllers/admin.controller";
 import { authenticateUser2, authenticateAdmin, authenticateUser } from "@/middlewares/auth.middleware";
 import userHubRoutes from "./userHub.routes.ts";
-import { attemptGuard, authIpLimiter, codeSendLimiter } from "@/middlewares/authGuard";
+import { attemptGuard, authIpLimiter, codeSendLimiter, twoFactorAccount } from "@/middlewares/authGuard";
 // import testSeedRoutes from "./test-seed.routes.ts";
 import { confirmHubEmailValidation, validateHubEmail, adminConnectDiscord, discordAdminCallback, proveWallet } from "@/controllers/hub.auth.controller.ts";
 import { tokenPricesUsd } from "@/utils/tokenPrices";
@@ -42,7 +42,7 @@ router
   .post("/admin/register", authIpLimiter, attemptGuard("platform-register"), createAdmin)
   .post("/admin/wallet-proof", authIpLimiter, proveWallet)
   .post("/admin/sign-in/check", authIpLimiter, attemptGuard("platform-login-check"), checkAdminSignInWallet)
-  .post("/admin/2fa/verify-login", authIpLimiter, verifyAdminTwoFactorLogin)
+  .post("/admin/2fa/verify-login", authIpLimiter, attemptGuard("platform-2fa", twoFactorAccount(ADMIN_TWO_FACTOR_PURPOSE)), verifyAdminTwoFactorLogin)
   .post("/admin/login", authIpLimiter, attemptGuard("platform-login"), adminLogin)
   .post("/admin/forgot-password", codeSendLimiter, forgotAdminPassword)
   .post("/admin/reset-password", authIpLimiter, resetAdminPassword)
