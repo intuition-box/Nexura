@@ -206,7 +206,8 @@ export const fetchCampaigns = async (
 			);
 		}
 
-		const joinedCampaigns = await campaignCompleted.find({ user: req.id }).lean();
+		// Signed out: nothing is joined (a missing user would otherwise match everyone's joins)
+		const joinedCampaigns = req.id ? await campaignCompleted.find({ user: req.id }).select("campaign").lean() : [];
 
 		const mergedCampaigns: any[] = [];
 
@@ -391,6 +392,11 @@ export const addCampaignAddress = async (
 			res.status(FORBIDDEN).json({ error: "you are not allowed to update this campaign" });
 			return;
 		}
+		// Swapping the rewards contract or pool of a published campaign would pull rewards from participants
+		if (foundCampaign.status !== "Save" && !req.isPlatformAdmin) {
+			res.status(FORBIDDEN).json({ error: "the rewards contract can only be set before the campaign is published" });
+			return;
+		}
 
 		foundCampaign.contractAddress = contractAddress;
 		const existingRewardsDeployment = { ...((foundCampaign as any).rewardsDeployment?.toObject?.() ?? (foundCampaign as any).rewardsDeployment ?? {}) };
@@ -481,20 +487,29 @@ export const joinCampaign = async (req: GlobalRequest, res: GlobalResponse) => {
 				campaignToJoin.trustClaimed < campaignToJoin.totalTrustAvailable &&
 				campaignToJoin.contractAddress
 			) {
-				const onchainStartDate = await getCampaignContractStartDate(campaignToJoin.contractAddress);
-				if (Number.isFinite(onchainStartDate) && onchainStartDate * 1000 > now.getTime()) {
-					await campaignCompleted.deleteOne({ _id: joinResult.upsertedId });
-					res.status(FORBIDDEN).json({
-						error: "Rewards start later on-chain. An admin must update or redeploy the contract.",
-					});
-					return;
-				}
+				try {
+					const onchainStartDate = await getCampaignContractStartDate(campaignToJoin.contractAddress);
+					if (Number.isFinite(onchainStartDate) && onchainStartDate * 1000 > now.getTime()) {
+						await campaignCompleted.deleteOne({ _id: joinResult.upsertedId });
+						res.status(FORBIDDEN).json({
+							error: "Rewards start later on-chain. An admin must update or redeploy the contract.",
+						});
+						return;
+					}
 
-				await performIntuitionOnchainAction({
-					action: "join",
-					userId,
-					contractAddress: campaignToJoin.contractAddress,
-				});
+					await performIntuitionOnchainAction({
+						action: "join",
+						userId,
+						contractAddress: campaignToJoin.contractAddress,
+					});
+				} catch (error) {
+					// Reward places full on-chain: they still take part for XP
+					if (normalizeJoinCampaignError(error) !== "Campaign participant limit reached.") {
+						// Not joined on-chain: undo the join so they can try again instead of being stuck as "already joined"
+						await campaignCompleted.deleteOne({ _id: joinResult.upsertedId });
+						throw error;
+					}
+				}
 			}
 
 			await campaign.updateOne({ _id: campaignToJoin._id }, { $inc: { participants: 1 } });
@@ -747,6 +762,13 @@ export const recordCampaignRewardsWithdrawal = async (
 		}
 		if (!foundCampaign.contractAddress || !ethers.isAddress(foundCampaign.contractAddress)) {
 			res.status(BAD_REQUEST).json({ error: "campaign rewards contract is not configured" });
+			return;
+		}
+		// A running campaign only ends through an approved "endCampaign" proposal (7 days' notice)
+		const endsAt = parseDate(foundCampaign.ends_at);
+		const ended = foundCampaign.status === "Ended" || (!!endsAt && endsAt.getTime() <= Date.now());
+		if (!ended && !req.isPlatformAdmin) {
+			res.status(FORBIDDEN).json({ error: "the campaign is still running; propose ending it first, then withdraw once it has ended" });
 			return;
 		}
 		if (!withdrawalTxHash || !withdrawalTxHash.trim()) {

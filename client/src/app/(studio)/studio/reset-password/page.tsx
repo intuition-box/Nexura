@@ -115,7 +115,9 @@ function ResetHubPasswordForm() {
 
       const accessToken = (res.token ?? res.accessToken) as string | undefined;
       if (!accessToken || !res.admin) {
-        throw new Error("No access token received");
+        toast({ title: "Password updated", description: "Sign in with your new password." });
+        router.push("/studio/sign-in");
+        return;
       }
 
       storeProjectSession(accessToken, {

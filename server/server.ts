@@ -78,7 +78,8 @@ server.listen(port, async () => {
 	startTrustEligibilityCron();
 
 	if (BOT_TOKEN) {
-		await client.login(BOT_TOKEN);
+		// A rejected Discord login (bad token, Discord down) turns the bot off, never the server
+		client.login(BOT_TOKEN).catch((error: any) => logger.error(`Discord bot login failed, bot disabled: ${error?.message ?? error}`));
 	} else {
 		logger.warn("BOT_TOKEN not set – Discord bot disabled");
 	}  logger.info(`Server is running on port ${port}`);

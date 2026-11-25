@@ -680,6 +680,9 @@ export const getNFT = async (walletAddress: string) => {
 export const submissionProblem = (value: unknown): string | null => {
 	if (typeof value !== "string" || !value.trim()) return "send your submission";
 	if (value.length > 5000) return "your submission is too long";
-	if (/^[\s\x00-\x1f]*(javascript|data|vbscript):/i.test(value)) return "that link isn't valid; use a normal web address";
+	// Browsers drop tabs/newlines anywhere in a URL and leading spaces/control characters, so "java\tscript:"
+	// still runs as javascript:. Check the scheme the way the browser will read it.
+	const asBrowserReadsIt = value.replace(/^[\x00-\x20]+/, "").replace(/[\t\n\r]/g, "");
+	if (/^(javascript|data|vbscript|file|blob):/i.test(asBrowserReadsIt)) return "that link isn't valid; use a normal web address";
 	return null;
 };

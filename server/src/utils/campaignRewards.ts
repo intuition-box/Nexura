@@ -5,12 +5,15 @@ import { performIntuitionOnchainAction } from "@/utils/account";
 import { runExclusively } from "@/utils/jobLock";
 import { user } from "@/models/user.model";
 import { campaignRewardAsset, defaultRewardAsset, isTrustAsset, rewardAssetUnavailable, rewardContractFor, rewardTotalKey } from "@/utils/rewardAssets";
-import { computeRetention } from "@/utils/retention";
+import { buildCampaignStages, computeRetention, doneAt, scoreCampaignRetention } from "@/utils/retention";
+import { campaignQuest } from "@/models/quests.model";
+import { campaignQuestCompleted } from "@/models/questsCompleted.models";
 
 /*
  * TRUST (monetary) reward eligibility. Anyone can join a campaign and earn its XP; only eligible
- * participants can claim the TRUST reward. Someone is eligible once they joined the campaign and
- * their Nexura score meets the minimum the project set (no minimum = no requirement).
+ * participants can claim the TRUST reward. Someone is eligible once they joined the campaign, finished
+ * every task in each stage open to them, and their Nexura score meets the minimum the project set
+ * (no minimum = no requirement).
  * Being eligible doesn't reserve a place: places go first come, first served to eligible people
  * who claim while places are left. Once eligible they stay eligible (on-chain campaigns are told the
  * wallet may claim at that moment). A scheduled job re-checks participants so people find out
@@ -46,6 +49,19 @@ export const nexuraScoreRequirement = (c: any): number | null => {
   const n = Number(c?.rewardsConfig?.nexuraScoreRequirementPct ?? c?.rewardsConfig?.retentionRequirementPct);
   return Number.isFinite(n) && n > 0 ? Math.min(100, n) : null;
 };
+
+/** Whether every task in each stage open to this person is done (at least one stage must be open). */
+async function openStagesDone(userId: unknown, c: any, join: any): Promise<boolean> {
+  const quests = await campaignQuest.find({ campaign: c._id }).select("_id stage").lean() as any[];
+  const stages = buildCampaignStages(c, quests);
+  if (!stages.length) return false;
+  const done = await campaignQuestCompleted.find({ user: userId, campaign: c._id, done: true }).select("campaignQuest updatedAt").lean() as any[];
+  const doneMap = new Map(done.map(d => [String(d.campaignQuest), doneAt(d)]));
+  const now = Date.now();
+  const open = scoreCampaignRetention(stages, doneMap, new Date(join.createdAt ?? now).getTime(), now).history
+    .filter(st => new Date(st.unlockAt).getTime() <= now);
+  return open.length > 0 && open.every(st => st.status === "completed");
+}
 
 /** TRUST already paid on this campaign (including a one-lump claim from before stage payouts). */
 const alreadyClaimed = (j: any) => !!j?.trustRewardClaimed || (!!j?.campaignCompleted && !(j?.xpStagesPaid?.length));
@@ -88,11 +104,13 @@ export async function checkTrustEligibility(userId: unknown, campaignId: unknown
 
   // Once eligible, they stay eligible
   let qualified = !!join.trustEligible;
-  if (!qualified && meetsNexuraScore && placesLeft && !claimed) qualified = await grantTrustEligibility(userId, c, join._id);
+  const tasksDone = qualified || claimed || !placesLeft ? true : await openStagesDone(userId, c, join);
+  if (!qualified && tasksDone && meetsNexuraScore && placesLeft && !claimed) qualified = await grantTrustEligibility(userId, c, join._id);
 
   let reason: string | null = null;
   if (claimed) reason = `You've already claimed this campaign's ${sym} reward.`;
   else if (!placesLeft) reason = `All the ${sym} reward places for this campaign have been taken.`;
+  else if (!qualified && !tasksDone) reason = `Finish the open tasks to qualify for the ${sym} reward.`;
   else if (!qualified) reason = required !== null
     ? `You need ${required}% Nexura score to qualify for the ${sym} reward. You're at ${current ?? 0}%.`
     : `Your ${sym} claim couldn't be set up yet. Try again in a few minutes.`;

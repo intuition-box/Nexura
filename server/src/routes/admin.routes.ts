@@ -4,6 +4,7 @@ import { listCoHostRefunds, markCoHostRefunded } from "@/controllers/coHost.cont
 import {
   checkPlatformProposal, createPlatformProposal, executePlatformProposal, getPlatformGovernance, getPlatformMe, getPlatformTeam, platformUsernameAvailable, changePlatformUsername,
   markPlatformNotificationsRead, useGovernanceInstead, voteOnPlatformProposal,
+  checkStreakRestore, giftStreakMoved, streakRestoreHistory,
 } from "@/controllers/platformGovernance.controller";
 import {
   changeAdminPassword, disableAdminTwoFactor, enableAdminTwoFactor, linkNexuraDiscord, listNexuraDiscordServers, sendAdminPasswordCode, setupAdminTwoFactor,
@@ -56,7 +57,6 @@ import {
   getEcosystemDapps,
   deleteEcosystemDapp,
   updateEcosystemDapp,
-  restoreUserStreak,
   publishEcosystemDapp,
   getLocationAnalytics,
 } from "@/controllers/admin.controller";
@@ -104,7 +104,9 @@ router
   .get("/location-analytics", getLocationAnalytics)
   // Team changes are governance proposals (/admin/governance), never one admin's direct action
   .post("/add-admin", useGovernanceInstead)
-  .post("/restore-streak", restoreUserStreak)
+  .post("/restore-streak", giftStreakMoved)
+  .get("/streak-restore/check", checkStreakRestore)
+  .get("/streak-restore/history", streakRestoreHistory)
   .post("/resend-invite", resendAdminInvite)
   .delete("/delete-invite", useGovernanceInstead)
   .post("/logout", adminLogout)

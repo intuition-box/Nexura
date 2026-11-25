@@ -475,15 +475,16 @@ export const fetchCampaignQuests = async (req: GlobalRequest, res: GlobalRespons
 
 		const quests = await campaignQuest.find({ campaign: id }).lean();
 
-		const campaignQuestsCompleted = await campaignQuestCompleted.find({
+		// Signed out: no progress (a missing user would otherwise match, and update, someone else's records)
+		const campaignQuestsCompleted = userId ? await campaignQuestCompleted.find({
 			user: userId,
 			campaign: id,
-		}).lean();
+		}).lean() : [];
 
-		const completedCampaign = await campaignCompleted.findOne({
+		const completedCampaign = userId ? await campaignCompleted.findOne({
 			user: userId,
 			campaign: id,
-		});
+		}) : null;
 
 		const campaignQuests: any[] = [];
 
