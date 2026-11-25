@@ -70,6 +70,7 @@ import { evaluateDailyStreak } from "@/utils/streak.utils";
 import { lesson, lessonCompleted } from "@/models/lesson.model";
 import { xpLog } from "@/models/xpLog.model";
 import { formatDate } from "date-fns";
+import { recordPaidRestore, recordRestoreAttempt } from "@/utils/streakRestore.service";
 import { ensureQuestStarted } from "./quest.controller";
 import { claimableStreakMilestone } from "@/utils/streakMilestones";
 
@@ -95,7 +96,7 @@ export const getStudioPaymentConfig = async (
     chainId: network === "mainnet" ? "0x483" : "0x350b",
     amount: network === "mainnet" ? "60" : "0.1",
     campaignAmount: network === "mainnet" ? "1000" : "1",
-    authorizedAddress: serverWalletAddress,
+    authorizedAddress: serverWalletAddress(),
   });
 };
 
@@ -2691,6 +2692,18 @@ async function findPayment(txHash: string) {
 }
 
 export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => {
+  const send = res.json.bind(res);
+  res.json = ((body: unknown) => {
+    recordRestoreAttempt({
+      user: req.id, address: req.user?.address, status: res.statusCode, body,
+      txHash: String(req.query.transactionHash ?? req.body?.transactionHash ?? ""),
+    });
+    return send(body);
+  }) as typeof res.json;
+  return restoreStreakHandler(req, res);
+};
+
+const restoreStreakHandler = async (req: GlobalRequest, res: GlobalResponse) => {
   try {
     const txHash = String(req.query.transactionHash ?? req.body?.transactionHash ?? "");
 
@@ -2764,6 +2777,8 @@ export const restoreStreak = async (req: GlobalRequest, res: GlobalResponse) => 
       dailySignInExists.xpClaimedThisMonth += 50;
       await dailySignInExists.save();
     }
+
+    await recordPaidRestore(restored as any, txHash);
 
     res.status(OK).json({ message: "streak restored" });
   } catch (error) {

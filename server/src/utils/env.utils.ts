@@ -41,25 +41,26 @@ export const REDIS_USERNAME = process.env.REDIS_USERNAME as string;
 
 export const ADMIN_URL = process.env.AUTH_URL as string;
 
-export const SERVER_ENV = z
+const isUrl = (url: string) => { try { new URL(url); return true; } catch { return false; } };
+const parsedOrigins = z
   .object({
     ALLOWED_ORIGINS: z
       .string()
       .transform((value) => value.split(",").map((origin) => origin.trim()))
-      .refine(
-        (urls) =>
-          urls.every((url) => {
-            try {
-              new URL(url);
-              return true;
-            } catch {
-              return false;
-            }
-          }),
-        { message: "One or more ALLOWED_ORIGINS are invalid URLs" },
-      ),
+      .refine((urls) => urls.every(isUrl), { message: "One or more ALLOWED_ORIGINS are invalid URLs" }),
   })
-  .parse(process.env);
+  .safeParse(process.env);
+// A missing or bad ALLOWED_ORIGINS never stops the server: keep the valid entries (or the app URLs) and warn
+if (!parsedOrigins.success) {
+  console.warn(`[env] ALLOWED_ORIGINS is missing or has invalid URLs; using only the valid ones. Fix it: ${parsedOrigins.error.issues.map(i => i.message).join("; ")}`);
+}
+export const SERVER_ENV = {
+  ALLOWED_ORIGINS: parsedOrigins.success
+    ? parsedOrigins.data.ALLOWED_ORIGINS
+    : (process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()).filter(isUrl).length
+      ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(isUrl)
+      : [process.env.CLIENT_URL, process.env.AUTH_URL].map((o) => o?.trim() ?? "").filter(isUrl)),
+};
 
 export function trustedOrigin(requested: unknown, fallback: string): string {
   if (typeof requested !== "string") return fallback;

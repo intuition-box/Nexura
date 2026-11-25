@@ -45,7 +45,7 @@ async function fixStaleIndexes() {
 	}
 }
 
-const connectDB = async () => {
+const connectDB = async (attempt = 1): Promise<void> => {
 	try {
 		const connect = await mongoose.connect(DB_URI, { family: 4 });
 		logger.info(
@@ -54,11 +54,14 @@ const connectDB = async () => {
 		);
 		await fixStaleIndexes();
 	} catch (error: any) {
+		// Do not exit: keep the server up and retry (2s, 4s … up to 30s apart) until the database is back.
+		// Mongoose only reconnects by itself after a first successful connection
+		const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
 		logger.error(
 			`\x1b[31m%s\x1b[0m`,
-			`DB: MongoDB Connection Failure: ${error.message}`
+			`DB: MongoDB Connection Failure (attempt ${attempt}): ${error.message}. Retrying in ${delay / 1000}s`
 		);
-		// Do not exit — let the server keep running so other routes are accessible
+		setTimeout(() => { void connectDB(attempt + 1); }, delay);
 	}
 };
 

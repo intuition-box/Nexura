@@ -9,6 +9,7 @@ import { BAD_REQUEST, CONFLICT, CREATED, FORBIDDEN, INTERNAL_SERVER_ERROR, NOT_F
 import { SIGNATURE_MAX_AGE_MS, recoverStudioSigner, signatureScheme } from "@/utils/studioSignature";
 import { USERNAME_RULE } from "@/utils/hubAccounts";
 import { MAX_USERNAME_CHANGES } from "@/controllers/hub.controller";
+import { StreakRestoreError, applyRestoreStreak, recentRestores, restoreStreakAction, streakEvidence } from "@/utils/streakRestore.service";
 
 /*
  * Admin Management governance for the Nexura admin dashboard. The same rules as the Studio's
@@ -144,7 +145,9 @@ function pendingSignerChangeFor(pending: any[], adminId: string) {
     || (p.action?.kind === "replaceSigner" && (p.action.oldId === adminId || p.action.newId === adminId)));
 }
 
-async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any, clientUrl: string) {
+const canRestoreStreaks = (role: Role) => role === "owner" || role === "superadmin";
+
+async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any, clientUrl: string, title?: unknown) {
   if (!raw || typeof raw !== "object" || typeof raw.kind !== "string") throw new HttpError(BAD_REQUEST, "action is required");
   const pending = await platformProposal.find({ status: "pending" }).select("action").lean() as any[];
   const target = (id: unknown) => {
@@ -236,6 +239,19 @@ async function validateAction(ctx: Ctx, me: { id: string; role: Role }, raw: any
       const prev = ctx.adminById(me.id);
       return { kind: "transferOwnership", newOwnerId: id, newOwnerName: nameOf(t), prevOwnerId: me.id, prevOwnerName: prev ? nameOf(prev) : "" };
     }
+    case "restoreStreak": {
+      if (!canRestoreStreaks(me.role)) throw new HttpError(FORBIDDEN, "only Super Admins and the Owner can restore streaks");
+      try {
+        const action = await restoreStreakAction(raw.address, title);
+        if (pending.some(p => p.action?.kind === "restoreStreak" && p.action.address === action.address)) {
+          throw new HttpError(BAD_REQUEST, "a streak restore for this wallet is already waiting for approval");
+        }
+        return action;
+      } catch (err) {
+        if (err instanceof StreakRestoreError) throw new HttpError(err.status, err.message);
+        throw err;
+      }
+    }
     default:
       throw new HttpError(BAD_REQUEST, "this kind of change isn't supported on the admin dashboard");
   }
@@ -256,10 +272,18 @@ function tally(ctx: Ctx, proposal: any) {
 }
 
 /** Applies an approved action. Returns the sign-up code when an invite email couldn't be sent. */
-async function runAction(ctx: Ctx, action: any): Promise<{ link: string; code: string; emailError: string } | void> {
+async function runAction(ctx: Ctx, action: any, proposal?: any): Promise<{ link: string; code: string; emailError: string } | void> {
   const gov = ctx.gov;
   const signerList = () => (gov.signers ?? []).map(String);
   const setSigners = (ids: string[]) => { (gov as any).signers = Array.from(new Set(ids)); };
+
+  if (action.kind === "restoreStreak") {
+    await applyRestoreStreak(action, {
+      proposalRef: proposal?.ref,
+      proposedBy: proposal?.proposedBy ? { id: String(proposal.proposedBy.id), name: String(proposal.proposedBy.name ?? "") } : undefined,
+    });
+    return;
+  }
 
   switch (action.kind) {
     case "invite": {
@@ -350,7 +374,7 @@ async function settle(ctx: Ctx, proposal: any, execute = false) {
     proposal.executingAt = null;
     proposal.markModified("executingAt");
     try {
-      const share = await runAction(ctx, proposal.action);
+      const share = await runAction(ctx, proposal.action, proposal);
       proposal.inviteShare = share ?? null;
       proposal.status = "executed";
       proposal.resolvedAt = new Date();
@@ -359,6 +383,11 @@ async function settle(ctx: Ctx, proposal: any, execute = false) {
     } catch (err: any) {
       logger.error("platform governance execution failed:", err);
       proposal.executionError = err?.message || "the change could not be applied";
+      if (err instanceof StreakRestoreError && err.final) {
+        proposal.status = "rejected";
+        proposal.resolvedAt = new Date();
+        proposal.resolvedCount = approvals;
+      }
     }
   } else if (rejections >= ctx.thresholds.rejection || cannotPass(ctx, proposal)) {
     proposal.status = "rejected";
@@ -532,21 +561,26 @@ export const createPlatformProposal = async (req: GlobalRequest, res: GlobalResp
   try {
     const ctx = await loadContext();
     const me = requireMe(req, ctx);
-    if (!ctx.signerIds.has(me.id)) throw new HttpError(FORBIDDEN, "only signers can make proposals; ask a signer to add you");
-
     const { ref, title, change, action, clientUrl } = req.body ?? {};
+    const streakByManager = action?.kind === "restoreStreak" && canRestoreStreaks(me.role);
+    if (!ctx.signerIds.has(me.id) && !streakByManager) throw new HttpError(FORBIDDEN, "only signers can make proposals; ask a signer to add you");
+
     if (typeof ref !== "string" || !/^[a-z0-9-]{6,64}$/i.test(ref)) throw new HttpError(BAD_REQUEST, "proposal id is invalid");
     if (typeof title !== "string" || !title.trim() || title.length > 200) throw new HttpError(BAD_REQUEST, "proposal title is required");
     if (await platformProposal.exists({ ref })) throw new HttpError(BAD_REQUEST, "this proposal already exists");
 
     const origin = typeof clientUrl === "string" && /^https?:\/\//.test(clientUrl) ? clientUrl : "";
-    const normalized = await validateAction(ctx, me, action, origin);
+    const normalized: any = await validateAction(ctx, me, action, origin, title);
     const sig = await verifySignature(ctx, me, "propose", { ref, title }, req.body);
+
+    const changeText = normalized.kind === "restoreStreak"
+      ? `${normalized.username || normalized.address}: streak ${normalized.fromStreak} → ${normalized.toStreak}${normalized.xp ? ` and ${normalized.xp} XP` : ""}. Their paid restore for the day they missed (${normalized.missedDay}) didn't go through.`
+      : typeof change === "string" ? change.slice(0, 500) : "";
 
     const proposal = await platformProposal.create({
       ref,
       title: title.trim(),
-      change: typeof change === "string" ? change.slice(0, 500) : "",
+      change: changeText,
       action: normalized,
       proposedBy: { id: me.id, name: me.name },
       signatures: [sig],
@@ -564,8 +598,9 @@ export const checkPlatformProposal = async (req: GlobalRequest, res: GlobalRespo
   try {
     const ctx = await loadContext();
     const me = requireMe(req, ctx);
-    if (!ctx.signerIds.has(me.id)) throw new HttpError(FORBIDDEN, "only signers can make proposals; ask a signer to add you");
-    await validateAction(ctx, me, req.body?.action, "");
+    const streakByManager = req.body?.action?.kind === "restoreStreak" && canRestoreStreaks(me.role);
+    if (!ctx.signerIds.has(me.id) && !streakByManager) throw new HttpError(FORBIDDEN, "only signers can make proposals; ask a signer to add you");
+    await validateAction(ctx, me, req.body?.action, "", req.body?.title);
     res.status(OK).json({ ok: true });
   } catch (error) {
     handleError(res, error, "error checking proposal");
@@ -637,6 +672,37 @@ export const markPlatformNotificationsRead = async (req: GlobalRequest, res: Glo
   } catch (error) {
     handleError(res, error, "error marking notifications as read");
   }
+};
+
+function requireStreakManager(req: GlobalRequest, ctx: Ctx) {
+  const me = requireMe(req, ctx);
+  if (!canRestoreStreaks(me.role)) throw new HttpError(FORBIDDEN, "only Super Admins and the Owner can restore streaks");
+  return me;
+}
+
+export const checkStreakRestore = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    requireStreakManager(req, await loadContext());
+    const { _user, ...evidence } = await streakEvidence(req.query.address);
+    const pending = await platformProposal.findOne({ status: "pending", "action.kind": "restoreStreak", "action.address": evidence.user.address }).select("ref title").lean() as any;
+    res.status(OK).json({ ...evidence, pendingProposal: pending ? { ref: pending.ref, title: pending.title } : null });
+  } catch (error) {
+    if (error instanceof StreakRestoreError) { res.status(error.status).json({ error: error.message }); return; }
+    handleError(res, error, "couldn't check this wallet");
+  }
+};
+
+export const streakRestoreHistory = async (req: GlobalRequest, res: GlobalResponse) => {
+  try {
+    requireStreakManager(req, await loadContext());
+    res.status(OK).json({ restores: await recentRestores(50) });
+  } catch (error) {
+    handleError(res, error, "couldn't load restores");
+  }
+};
+
+export const giftStreakMoved = (_req: GlobalRequest, res: GlobalResponse) => {
+  res.status(FORBIDDEN).json({ error: "Gifting a streak by number is closed. Use the Streak Restore tab: the server checks the wallet and signers approve the restore." });
 };
 
 /** Team changes go through proposals; the old direct routes answer with this. */

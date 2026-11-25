@@ -17,6 +17,9 @@ import { parseDate } from "@/utils/dates";
 
 const DAY_MS = 86_400_000;
 
+/** When a task was completed (ms); records without timestamps count as done long ago instead of breaking scoring. */
+export const doneAt = (d: any) => new Date(d?.updatedAt ?? d?.createdAt ?? 0).getTime() || 0;
+
 export type RetentionStage = { key: string; name: string; offsetDays: number; taskIds: string[] };
 
 /** A campaign's stages in order, each with its tasks and when it opens (days after joining). Stages without tasks are left out. */
@@ -112,7 +115,7 @@ export async function computeRetention(userIds: string[], nowMs = Date.now()): P
   for (const d of completions) {
     const uid = String(d.user);
     if (!doneByUser.has(uid)) doneByUser.set(uid, new Map());
-    doneByUser.get(uid)!.set(String(d.campaignQuest), new Date(d.updatedAt).getTime());
+    doneByUser.get(uid)!.set(String(d.campaignQuest), doneAt(d));
   }
 
   for (const uid of userIds) result.set(uid, { nexuraScore: null, campaigns: 0, perCampaign: new Map() });
